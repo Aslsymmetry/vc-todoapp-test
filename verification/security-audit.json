@@ -1,0 +1,85 @@
+{
+  "scope": "HARU source, Git history, anonymous RTDB reads; no administrator account access",
+  "secret_scan": {
+    "historical_blobs_checked": 29,
+    "findings": [],
+    "limit": "Pattern scan only; not proof that no secret ever existed outside these files."
+  },
+  "anonymous_reads": {
+    "checkedAt": "2026-10-10T01:53:30.185127+00:00",
+    "results": [
+      {
+        "path": ".json",
+        "method": "GET",
+        "status": 401,
+        "credentials_used": false,
+        "response_body_saved": false
+      },
+      {
+        "path": "sharedTodos.json",
+        "method": "GET",
+        "status": 401,
+        "credentials_used": false,
+        "response_body_saved": false
+      },
+      {
+        "path": "todos.json",
+        "method": "GET",
+        "status": 401,
+        "credentials_used": false,
+        "response_body_saved": false
+      },
+      {
+        "path": "todos/zoYPxt9htMPCVu0a45pRxcFbMBi1.json",
+        "method": "GET",
+        "status": 401,
+        "credentials_used": false,
+        "response_body_saved": false
+      },
+      {
+        "path": "todos/S9DBKOd37hVfeyujddqeODyf1503.json",
+        "method": "GET",
+        "status": 401,
+        "credentials_used": false,
+        "response_body_saved": false
+      }
+    ]
+  },
+  "historical_cleanup": {
+    "time": "2026-10-10T01:33:12.571Z",
+    "results": [
+      {
+        "test": "temporary test data cleanup",
+        "status": "PASS",
+        "detail": "zoYPxt9htMPCVu0a45pRxcFbMBi1"
+      },
+      {
+        "test": "temporary account cleanup",
+        "status": "PASS",
+        "detail": "HTTP 200"
+      },
+      {
+        "test": "temporary test data cleanup",
+        "status": "PASS",
+        "detail": "S9DBKOd37hVfeyujddqeODyf1503"
+      },
+      {
+        "test": "temporary account cleanup",
+        "status": "PASS",
+        "detail": "HTTP 200"
+      }
+    ],
+    "limit": "Historical recorded responses; current Auth user inventory was not queried."
+  },
+  "not_verified": [
+    "Google account sessions and access history",
+    "Current Firebase Auth user inventory and provider configuration",
+    "Project IAM, billing, quotas and other Firebase services",
+    "Authenticated write access",
+    "All possible vulnerabilities"
+  ],
+  "remaining_known_changes": [
+    "Email/password Firebase Auth provider enabled during earlier work; rollback not performed",
+    "UID-based RTDB rules previously published; public shared rules not published"
+  ]
+}

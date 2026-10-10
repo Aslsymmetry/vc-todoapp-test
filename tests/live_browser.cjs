@@ -82,7 +82,11 @@ async function rest(path, method = 'GET', body) {
       assert.ok([401, 403].includes(result.status), name);
       record(`server rejects ${name}`, 'PASS', `HTTP ${result.status}`);
     }
-    const root = await fetch(`${base}/.json`, { method: 'HEAD' });
+    const root = await fetch(`${base}/.json?shallow=true`, {
+      method: 'GET', credentials: 'omit', signal: AbortSignal.timeout(20000)
+    });
+    // Check permission status without retaining any root data. HEAD is unsupported.
+    if (root.body) await root.body.cancel();
     assert.ok([401, 403].includes(root.status));
     record('root access denied', 'PASS', `HTTP ${root.status}`);
     await p.locator('#search').fill(title);

@@ -27,3 +27,5 @@
 모든 방문자의 공유 항목 읽기/수정/삭제는 사용자가 선택한 권한임. 남용·할당량 소진 등 운영 위험이 0이라고 보장하지 않음. 종합 보안 감사, App Check 설정, 속도 제한 및 새 규칙의 emulator 검증은 미수행.
 
 앞선 로그인 버전의 실제 Firebase PASS는 이번 공개 버전의 PASS로 재사용하지 않음. Vercel 배포 미수행.
+
+계정 접근 관련 후속 검토와 미해결 항목은 `SECURITY-REVIEW.md`, 확인한 응답 코드는 `verification/security-audit.json`에 기록했습니다.
