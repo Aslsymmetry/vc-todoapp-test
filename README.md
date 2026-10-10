@@ -47,8 +47,8 @@ HTML / CSS / JavaScript로 만든 할 일 앱입니다. **Firebase Realtime Data
 
 ## 제한 사항 / 검증 범위
 
-- 실제 프로젝트의 **Authentication 활성화 및 Realtime Database 규칙 적용은 Firebase 콘솔에서 별도로 수행**해야 합니다.
-- 실제 Firebase 브라우저 회원가입을 시도했으나 `auth/configuration-not-found`로 차단됐습니다. Authentication 설정 활성화가 필요합니다. 실제 CRUD/동기화/권한 격리는 아직 미검증입니다. 자세한 결과는 `VERIFICATION.md`를 확인하세요.
+- 이 프로젝트의 이메일/비밀번호 인증과 UID별 DB 규칙은 2026-10-09에 실제 콘솔에서 활성화·게시했습니다. 다른 Firebase 프로젝트로 옮길 경우 설정을 별도로 적용해야 합니다.
+- 실제 Firebase 회원가입·CRUD·독립 REST 조회·재로그인 영속성·두 브라우저 동기화·계정 간 접근 차단 검증을 통과했습니다. 테스트 자료는 정리했습니다. 자세한 결과는 `VERIFICATION.md`와 `verification/live-results.json`을 확인하세요.
 - Firebase 초기화 설정에 포함된 `apiKey`는 웹 클라이언트 설정값입니다. 공개 저장소에 노출되므로 **보안은 Firebase Authentication, Realtime Database 규칙 및 필요한 API 키 제한**으로 유지해야 합니다. 관리자 서비스 계정 키는 코드/저장소에 넣지 마세요.
 - 예전 앱과 이 앱은 도메인이 다르면 `localStorage`를 공유하지 않습니다. 같은 오리진에서 실행한 예전 앱에 저장된 자료만 직접 가져올 수 있습니다.
 

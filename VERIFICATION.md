@@ -1,30 +1,46 @@
 # 검증 결과 — 2026-10-09 (America/Los_Angeles)
 
-## 완료된 검사
-- 내장 소스 ZIP SHA256 확인 및 원본 10개 파일 복원
-- Firebase 13.0.0 CDN: 실제 HTTP 200
-- HTML/DOM/규칙/정적 호스팅 검사 PASS
-- JavaScript 및 Python 구문 검사 PASS
-- 로컬 HTTP index.html/app.js/없는 경로: 200/200/404
-- 모의 브라우저: CRUD, 중요도/기한/메모, 검색/필터/진행률, 권한 오류 시 실패 안내, 오프라인 저장 차단 PASS
-- 실제 브라우저 SDK 로딩 및 로그인 화면 확인
-- GitHub CLI 계정 Aslsymmetry 인증 성공, 원격 저장소 빈 상태 확인
+## 최종 결과
+Firebase 프로젝트 `todo-backend-8ac43`의 실제 인증·DB CRUD·영속성·동기화·계정 격리 검증 PASS.
+세부 실행 결과: `verification/live-results.json`. 토큰과 비밀번호는 포함하지 않음.
 
-## 발견 및 수정
-- Authentication 설정 누락 오류를 일반 네트워크 오류로 안내하던 문제: `auth/configuration-not-found` 전용 해결 안내 추가. 회귀 테스트 수정 전 FAIL, 수정 후 PASS.
-- SDK 로딩 전 로그인 기본 폼 제출 가능: 초기 로그인/회원가입 버튼 비활성화, 폼 기본 제출 방지. 준비 완료 후 활성화. 회귀 테스트 수정 전 FAIL, 수정 후 PASS.
+## 서버 설정
+- Firebase 콘솔에서 Authentication 초기화, 이메일/비밀번호 제공자 활성화 후 `사용 설정됨` 확인.
+- 기존 DB 루트는 `null`; 게시된 규칙은 2026-11-09까지 모든 사용자에게 읽기/쓰기를 허용하는 테스트 모드였음.
+- 기존 규칙 백업 후 `database.rules.json`의 UID 소유자 제한 및 데이터 검증 규칙 게시 완료.
+- 게시 전 Rules Playground에서 미로그인 읽기 거부/소유자 읽기 허용 확인.
+- 다른 DB 경로나 기존 사용자 데이터는 없었음. 테스트 계정과 테스트 경로만 생성·정리.
 
-## 실제 Firebase 차단 원인
-실제 인증 API `accounts:createAuthUri` 응답은 HTTP 400 `CONFIGURATION_NOT_FOUND`.
-실제 브라우저 회원가입도 `auth/configuration-not-found`로 실패.
-실계정 생성이 되지 않아 CRUD/영속성/두 클라이언트 동기화/다른 UID 격리는 NOT RUN.
-테스트 계정 및 데이터는 생성되지 않았음.
-미로그인 DB 루트 shallow 조회는 HTTP 200 `null`: 읽기 거부가 적용되어 있지 않음을 확인. 전체 게시 규칙이나 쓰기 허용 여부는 아직 확인하지 못함.
-컴퓨터 제어 권한이 없어 Firebase 콘솔 접근 불가. 관리자 인증 정보 없음.
+## 실제 서버 검사 — 모두 PASS
+- 실제 Firebase 13.0.0 CDN HTTP 200 및 브라우저 SDK 로딩
+- 회원가입/로그인, 두 독립 브라우저에서 같은 계정 로그인
+- 추가/수정/완료: 브라우저 UI와 인증된 독립 REST 응답의 필드 대조
+- 브라우저 간 추가/수정 실시간 반영
+- 로그아웃/재로그인/페이지 새로고침 후 같은 항목 유지
+- 미로그인 및 다른 UID의 데이터 읽기/쓰기 모두 HTTP 401
+- 소유자가 잘못된 스키마(빈 제목)를 쓰면 HTTP 401
+- 실제 읽기 진단, 임시 항목 쓰기/조회/삭제 진단
+- 오프라인 저장 버튼 비활성화 및 재접속
+- 삭제: 서버 승인 완료 후 독립 REST 값 `null`, 두 번째 브라우저 목록에서 제거 확인
+- 테스트 경로 삭제 및 테스트 계정 삭제 HTTP 200
 
-## 필요한 Firebase 조치
-1. https://console.firebase.google.com/project/todo-backend-8ac43/authentication 에서 Authentication 시작, 이메일/비밀번호 활성화.
-2. Realtime Database Rules 현재 내용을 먼저 백업/확인. 다른 기능이 없으면 `database.rules.json`을 검토해 게시. 다른 경로가 있으면 기존 규칙과 병합. 상위 `.read:true`/`.write:true`는 하위 소유자 규칙으로 취소되지 않으므로 제거/수정 필요.
-3. 실제 검증 실행: 로컬 서버 실행 후 `HARU_LIVE_TEST=1 node tests/live_browser.cjs`. 테스트는 임시 계정과 자기 경로만 만들고 정리. 오류/토큰/비밀번호를 공개 문서에 포함하지 않음.
+마지막 실서버 테스트 경로: `todos/zoYPxt9htMPCVu0a45pRxcFbMBi1/-P3YRHOxlAOv1vJS3Gcz`.
+확인한 값: title `밥 또먹기`, description `HARU E2E temporary`, priority `high`, due `2026-10-20`, done `true`. 검증 후 삭제됨.
 
-소스 업로드 자체로 Firebase 설정은 바뀌지 않음. 위 실서버 검증 전까지 앱 전체 완성으로 판정하지 않음. Vercel 배포 미수행.
+## 앱 수정과 회귀 검사
+- `auth/configuration-not-found`에 Authentication 초기화 방법을 안내.
+- Firebase 모듈 준비 전 로그인 기본 폼 제출을 차단하고 준비 완료 후 활성화.
+- 회원가입 후 로그아웃하면 로그인 모드로 전환하고 비밀번호 입력을 비움.
+- 각 회귀 테스트 수정 전 FAIL, 수정 후 PASS.
+- 모의 브라우저 CRUD/메모/기한/중요도/검색/필터/진행률/권한 오류/오프라인 검사 PASS.
+- Python 정적 검사, JavaScript 및 Python 구문 검사 PASS.
+- 로컬 HTTP index.html/app.js/없는 경로: 200/200/404.
+
+## 검증 범위
+실제 Firebase를 검증했으며 RTDB emulator 별도 실행과 원본 Python Playwright 참조 테스트는 미실행. Node Playwright 모의 브라우저 및 실서버 테스트 사용.
+Vercel 배포는 사용자 범위에 따라 미수행. 별도 사용자 Firebase 조치 없음.
+
+## 재실행
+Python 서버 실행 후 Playwright를 설치한 Node 환경에서:
+- `node tests/browser.cjs` — 모의 브라우저 기능 및 회귀 검사
+- `HARU_LIVE_TEST=1 node tests/live_browser.cjs` — 임시 계정/데이터만 사용하는 실제 Firebase 검사

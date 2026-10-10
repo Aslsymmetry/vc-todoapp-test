@@ -241,6 +241,13 @@ function startWatching(firebaseUser) {
   $('diagnostic-path').textContent = user ? dataPath() : '로그인 전';
   diagnosticResult(user ? `계정 ${user.email || user.uid} 로그인됨. 데이터 경로: ${dataPath()}\n현재 연결·권한 확인 중` : '로그인한 다음 읽기/쓰기 테스트를 수행할 수 있어요.');
   if (!user) {
+    signingUp = false;
+    $('auth-title').textContent = 'Firebase 계정 로그인';
+    $('auth-submit').textContent = '로그인';
+    $('auth-switch-text').textContent = '계정이 없나요?';
+    $('auth-toggle').textContent = '회원가입';
+    $('auth-password').autocomplete = 'current-password';
+    $('auth-password').value = '';
     $('account').classList.remove('visible');
     $('auth-overlay').hidden = false;
     $('auth-error').textContent = '';
