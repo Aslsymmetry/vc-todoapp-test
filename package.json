@@ -1,0 +1,15 @@
+{
+  "name": "haru-shared-todos",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Login-free shared Firebase Realtime Database todo app",
+  "scripts": {
+    "test": "node tests/store.cjs && node tests/browser.cjs",
+    "test:static": "python3 tests/check_static.py",
+    "test:live": "HARU_LIVE_TEST=1 node tests/live_browser.cjs",
+    "test:live:read": "node tests/live_read.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

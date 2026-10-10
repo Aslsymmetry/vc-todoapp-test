@@ -163,14 +163,14 @@
         <div class="brand-symbol" aria-hidden="true">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>
         </div>
-        <div><div class="brand-name">하루<span style="color:#6657ef">.</span></div><div class="brand-subtitle">나만의 작은 할 일 관리</div></div>
+        <div><div class="brand-name">하루<span style="color:#6657ef">.</span></div><div class="brand-subtitle">함께 쓰는 작은 할 일 목록</div></div>
       </div>
       <time class="today-label" id="today-label"></time>
     </header>
 
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <div class="eyebrow">MY DAILY PLANNER</div>
+        <div class="eyebrow">OUR DAILY PLANNER</div>
         <h1 id="hero-title">작은 일부터, 하나씩.</h1>
         <p>오늘의 계획을 기록하고 하나씩 완성해 보세요.<br>꾸준한 하루가 모여 큰 변화를 만들어요.</p><div class="version-label">Firebase 실시간 저장 · 모두의 공유 목록</div>
       </div>
@@ -180,7 +180,7 @@
       </div>
     </section>
 
-    <div id="status" class="status" role="status" aria-live="polite">Firebase에 연결하고 있어요…</div>
+    <div id="status" class="status" role="status" aria-live="polite">공유 목록에 연결하고 있어요…</div><button type="button" id="retry-btn" class="small-btn" style="margin-top:10px">다시 불러오기</button>
     <details class="diagnostics" id="diagnostics">
       <summary>Firebase 연결 상태·실제 저장 경로 확인</summary>
       <div>프로젝트: <strong id="diagnostic-project">todo-backend-8ac43</strong></div>
@@ -202,8 +202,8 @@
 
     <section class="section" aria-labelledby="list-heading">
       <div class="section-top">
-        <div class="section-heading"><h2 id="list-heading">나의 할 일</h2><span id="list-count">0</span></div>
-        <div class="section-buttons"><button type="button" id="import-btn" class="small-btn" hidden>이전 할 일 가져오기</button><button class="add-btn" type="button" id="add-btn" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>할 일 추가</button></div>
+        <div class="section-heading"><h2 id="list-heading">모두의 할 일</h2><span id="list-count">0</span></div>
+        <div class="section-buttons"><button class="add-btn" type="button" id="add-btn" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>할 일 추가</button></div>
       </div>
       <div class="toolbar">
         <div class="filters" role="group" aria-label="할 일 상태 필터">
@@ -227,14 +227,14 @@
         <label class="field"><span class="field-label">중요도</span><select class="control" id="task-priority"><option value="medium">보통</option><option value="high">높음</option><option value="low">낮음</option></select></label>
         <label class="field"><span class="field-label">마감일 (선택)</span><input class="control" id="task-due" type="date"></label>
       </div>
-      <div class="dialog-actions"><button type="button" class="secondary-btn" id="cancel-btn">취소</button><button class="add-btn" id="save-btn" type="submit">할 일 저장</button></div>
+      <div id="form-error" class="diagnostic-result error" role="alert"></div><div class="dialog-actions"><button type="button" class="secondary-btn" id="cancel-btn">취소</button><button class="add-btn" id="save-btn" type="submit">할 일 저장</button></div>
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script type="module">
     import('./app.js').catch(error => {
       console.error('하루 앱 모듈 로드 실패', error);
-      const message = '앱 실행 실패: Firebase JavaScript SDK를 불러오지 못했습니다. 인터넷 연결·브라우저 개발자 도구의 Console/Network 탭을 확인해 주세요.';
+      const message = '앱 파일을 불러오지 못했어요. 다시 불러오거나 인터넷 연결을 확인해 주세요.';
       const status = document.getElementById('status');
       if (status) { status.textContent = message; status.className = 'status error'; }
     });

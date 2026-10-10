@@ -4,3 +4,4 @@ node_modules/
 .env*
 tests/live-results.json
 tests/live-screen.png
+tests/preview.png

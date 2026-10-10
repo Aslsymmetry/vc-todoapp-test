@@ -13,7 +13,8 @@ import webbrowser
 HOST = '127.0.0.1'  # 이 컴퓨터에서만 접속 허용
 PORT = 3000
 APP_DIR = Path(__file__).resolve().parent / 'public'
-APP_FILES = {'/index.html': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'text/javascript; charset=utf-8')}
+APP_FILES = {'/index.html': ('index.html', 'text/html; charset=utf-8')}
+APP_FILES.update({f'/{name}': (name, 'text/javascript; charset=utf-8') for name in ('app.js', 'config.js', 'store.js')})
 URL = f'http://{HOST}:{PORT}/index.html'
 
 
@@ -89,7 +90,7 @@ def main():
     args = parser.parse_args()
 
     if not all((APP_DIR / name).is_file() for name, _ in APP_FILES.values()):
-        print('오류: server.py와 동일한 폴더에 index.html과 app.js가 있어야 합니다.', file=sys.stderr)
+        print('오류: public 폴더에 index.html, app.js, config.js, store.js가 있어야 합니다.', file=sys.stderr)
         return 1
 
     try:

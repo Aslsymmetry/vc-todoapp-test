@@ -1,397 +1,167 @@
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js';
-import { getDatabase, ref, push, set, remove, onValue, runTransaction, get } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js';
+import { TodoStore, newTaskId } from './store.js';
+import { firebaseConfig, TODO_PATH } from './config.js';
 
-const firebaseConfig = {
-  apiKey: 'AIzaSyC-hSK4pFaXJUXx1pW-gNBM5rbN95R3pg8',
-  projectId: 'todo-backend-8ac43',
-  databaseURL: 'https://todo-backend-8ac43-default-rtdb.firebaseio.com/',
-  storageBucket: 'todo-backend-8ac43.firebasestorage.app',
-  messagingSenderId: '922372533680',
-  appId: '1:922372533680:web:f363064bb1c8e08dff3a75'
-};
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-const $ = (id) => document.getElementById(id);
-const list = $('task-list');
+const $ = id => document.getElementById(id);
 const dialog = $('task-dialog');
-const form = $('task-form');
-const titleInput = $('task-title');
-const status = $('status');
-let tasks = [];
-let tasksRef = null;
-let stopTasks = null;
-let stopConnection = null;
-let filter = 'all';
-let keyword = '';
-let editingId = null;
-let lastFocus = null;
-let busy = false;
-let loaded = false;
-let connected = false;
+const state = { tasks: [], phase: 'loading', error: null, busy: false, filter: 'all', query: '' };
+let draftId = null;
+let draftCreatedAt = 0;
+let editing = false;
+let editingSnapshot;
+let focusBeforeDialog;
 let toastTimer;
-let watchGeneration = 0;
-
-const ICON_EDIT = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L9 17l-4 1 1-4Z"/></svg>';
-const ICON_DELETE = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>';
-const ICON_EMPTY = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 9h8M8 13h8M8 17h4"/></svg>';
-
+const store = new TodoStore(next => { Object.assign(state, next); render(); });
+const messages = {
+  loading: '공유 할 일을 불러오고 있어요…',
+  ready: 'Firebase에 연결됨 · 모두의 공유 목록',
+  offline: '연결이 끊겼어요. 다시 연결되면 공유 목록을 불러옵니다.'
+};
+function element(tag, className = '', text) {
+  const node = document.createElement(tag);
+  node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
 function notify(message) {
-  const toast = $('toast');
-  toast.textContent = message;
-  toast.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('show'), 3200);
+  $('toast').textContent = message; $('toast').classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('show'), 4000);
 }
-function setStatus(message, kind = '') {
-  status.textContent = message;
-  status.className = `status ${kind}`.trim();
+function today() {
+  const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-function describeError(error) {
-  const map = {
-    'PERMISSION_DENIED': 'Firebase Realtime Database 보안 규칙을 확인해 주세요.',
-    'permission_denied': 'Firebase Realtime Database 보안 규칙을 확인해 주세요.'
-  };
-  const code = error?.code || '';
-  if (map[code]) return map[code];
-  if (/permission.denied/i.test(`${code} ${error?.message || ''}`)) return map.PERMISSION_DENIED;
-  if (error?.message === '이미 삭제된 할 일이에요.' || /후 Firebase 데이터 재조회/.test(error?.message || '')) return error.message;
-  return 'Firebase 요청에 실패했어요. 인터넷 연결과 Firebase 설정을 확인해 주세요.';
-}
-function node(tag, cls, text) {
-  const el = document.createElement(tag);
-  if (cls) el.className = cls;
-  if (text !== undefined) el.textContent = text;
-  return el;
-}
-function todayISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
-function formatDue(iso) {
-  if (iso === todayISO()) return '오늘까지';
-  const [y,m,d] = iso.split('-').map(Number);
-  return `${y}.${String(m).padStart(2,'0')}.${String(d).padStart(2,'0')}`;
-}
-function normalizeTask(id, raw) {
-  if (!raw || typeof raw !== 'object' || typeof raw.title !== 'string') return null;
-  return {
-    id,
-    title: raw.title.slice(0, 120),
-    description: String(raw.description || '').slice(0, 1000),
-    priority: ['high','medium','low'].includes(raw.priority) ? raw.priority : 'medium',
-    due: typeof raw.due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.due) ? raw.due : '',
-    done: raw.done === true,
-    createdAt: Number(raw.createdAt) || 0
-  };
-}
-function readLegacy() {
-  try {
-    const records = JSON.parse(localStorage.getItem('haru_tasks_v1') || '[]');
-    return Array.isArray(records) ? records
-      .filter(t => t && typeof t.id === 'string' && typeof t.title === 'string' && t.title.trim())
-      .map(t => normalizeTask(t.id, t)).filter(Boolean) : [];
-  } catch (_) { return []; }
-}
-function updateControls() {
-  const enabled = Boolean(loaded && connected && !busy);
-  $('add-btn').disabled = !enabled;
-  $('save-btn').disabled = !enabled;
-  const legacy = readLegacy();
-  $('import-btn').hidden = !loaded || !legacy.length;
-  $('import-btn').disabled = !enabled;
-  $('read-test-btn').disabled = !Boolean(connected && !busy);
-  $('write-test-btn').disabled = !enabled;
-  $('import-btn').textContent = `이전 할 일 ${legacy.length}개 가져오기`;
-  for (const el of list.querySelectorAll('.check, .task-actions button')) el.disabled = !enabled;
+function controls() {
+  const disabled = state.phase !== 'ready' || state.busy;
+  for (const id of ['add-btn', 'save-btn', 'write-test-btn']) $(id).disabled = disabled;
+  $('read-test-btn').disabled = state.busy || state.phase === 'loading';
+  $('retry-btn').disabled = state.busy || state.phase === 'loading';
+  for (const button of document.querySelectorAll('.task-actions button, .check')) button.disabled = disabled;
+  for (const id of ['cancel-btn', 'dialog-close']) $(id).disabled = state.busy;
 }
 function render() {
-  const total = tasks.length;
-  const done = tasks.filter(t => t.done).length;
-  const percent = total ? Math.round(done / total * 100) : 0;
-  $('total-count').textContent = String(total);
-  $('active-count').textContent = String(total - done);
-  $('done-count').textContent = String(done);
-  $('percent').textContent = `${percent}%`;
-  $('progress-fill').style.width = `${percent}%`;
-  $('progress-track').setAttribute('aria-valuenow', String(percent));
-  document.querySelectorAll('[data-filter]').forEach(btn => btn.setAttribute('aria-pressed', String(btn.dataset.filter === filter)));
-  const filtered = tasks.filter(t => (filter === 'all' || (filter === 'active' ? !t.done : t.done)) &&
-    `${t.title} ${t.description}`.toLocaleLowerCase().includes(keyword));
-  filtered.sort((a,b) => Number(a.done) - Number(b.done) || b.createdAt - a.createdAt);
-  $('list-count').textContent = String(filtered.length);
-  list.replaceChildren();
-  if (!filtered.length) {
-    const empty = node('div', 'empty');
-    const symbol = node('div', 'empty-icon'); symbol.innerHTML = ICON_EMPTY;
-    const heading = node('h3', '', !loaded ? 'Firebase에서 할 일을 불러오는 중이에요' : tasks.length ? '검색 조건에 맞는 할 일이 없어요' : '아직 등록된 할 일이 없어요');
-    const detail = node('p', '', !loaded ? '잠시만 기다려 주세요.' : tasks.length ? '검색어 또는 상태 필터를 바꿔보세요.' : '오른쪽 위의 ‘할 일 추가’를 눌러 시작해 보세요.');
-    empty.append(symbol, heading, detail); list.append(empty);
-  } else {
-    const fragment = document.createDocumentFragment();
-    for (const task of filtered) {
-      const row = node('article', `task${task.done ? ' completed' : ''}`);
-      const check = node('input', 'check'); check.type = 'checkbox'; check.checked = task.done;
-      check.setAttribute('aria-label', `${task.title} ${task.done ? '완료 취소' : '완료하기'}`);
-      check.dataset.id = task.id; check.dataset.action = 'toggle';
-      const main = node('div', 'task-main');
-      main.append(node('div', 'task-title', task.title));
-      if (task.description) main.append(node('div', 'task-desc', task.description));
-      const meta = node('div', 'task-meta');
-      meta.append(node('span', `pill ${task.priority}`, {high:'높음',medium:'보통',low:'낮음'}[task.priority]));
-      if (task.due) {
-        const overdue = !task.done && task.due < todayISO();
-        meta.append(node('span', `due${overdue ? ' overdue' : ''}`, `${overdue ? '기한 지남 · ' : '마감 · '}${formatDue(task.due)}`));
-      }
-      main.append(meta);
-      const actions = node('div', 'task-actions');
-      const edit = node('button', 'icon-btn'); edit.type = 'button'; edit.dataset.action = 'edit'; edit.dataset.id = task.id;
-      edit.setAttribute('aria-label', `${task.title} 수정`); edit.title = '수정'; edit.innerHTML = ICON_EDIT;
-      const del = node('button', 'icon-btn delete'); del.type = 'button'; del.dataset.action = 'delete'; del.dataset.id = task.id;
-      del.setAttribute('aria-label', `${task.title} 삭제`); del.title = '삭제'; del.innerHTML = ICON_DELETE;
-      actions.append(edit, del); row.append(check, main, actions); fragment.append(row);
+  const tasks = state.tasks;
+  const completed = tasks.filter(task => task.done).length;
+  const percentage = tasks.length ? Math.round(completed / tasks.length * 100) : 0;
+  $('total-count').textContent = tasks.length;
+  $('active-count').textContent = tasks.length - completed;
+  $('done-count').textContent = completed;
+  $('percent').textContent = `${percentage}%`;
+  $('progress-fill').style.width = `${percentage}%`;
+  $('progress-track').setAttribute('aria-valuenow', percentage);
+  $('status').textContent = state.busy ? '서버에서 저장 결과를 확인하고 있어요…' : state.error?.message || messages[state.phase];
+  $('status').className = `status ${state.phase === 'ready' ? 'ready' : state.phase === 'error' ? 'error' : 'warning'}`;
+  for (const button of document.querySelectorAll('[data-filter]')) button.setAttribute('aria-pressed', button.dataset.filter === state.filter);
+  const shown = tasks.filter(task => (state.filter === 'all' || (state.filter === 'done' ? task.done : !task.done)) &&
+    `${task.title} ${task.description}`.toLocaleLowerCase().includes(state.query))
+    .sort((a, b) => Number(a.done) - Number(b.done) || b.createdAt - a.createdAt || a.id.localeCompare(b.id));
+  $('list-count').textContent = shown.length;
+  const fragment = document.createDocumentFragment();
+  for (const task of shown) {
+    const row = element('article', `task${task.done ? ' completed' : ''}`);
+    const check = element('input', 'check'); check.type = 'checkbox'; check.checked = task.done;
+    check.dataset.action = 'toggle'; check.dataset.id = task.id;
+    check.setAttribute('aria-label', `${task.title} ${task.done ? '완료 취소' : '완료하기'}`);
+    const main = element('div', 'task-main'); main.append(element('div', 'task-title', task.title));
+    if (task.description) main.append(element('div', 'task-desc', task.description));
+    const metadata = element('div', 'task-meta');
+    metadata.append(element('span', `pill ${task.priority}`, { high: '높음', medium: '보통', low: '낮음' }[task.priority]));
+    if (task.due) {
+      const overdue = !task.done && task.due < today();
+      metadata.append(element('span', `due${overdue ? ' overdue' : ''}`, `${overdue ? '기한 지남 · ' : '마감 · '}${task.due.replaceAll('-', '.')}`));
     }
-    list.append(fragment);
+    main.append(metadata);
+    const actions = element('div', 'task-actions');
+    for (const [action, title, symbol] of [['edit', '수정', '✎'], ['delete', '삭제', '×']]) {
+      const button = element('button', `icon-btn${action === 'delete' ? ' delete' : ''}`, symbol);
+      button.type = 'button'; button.dataset.action = action; button.dataset.id = task.id; button.title = title;
+      button.setAttribute('aria-label', `${task.title} ${title}`); actions.append(button);
+    }
+    row.append(check, main, actions); fragment.append(row);
   }
-  updateControls();
-}
-function dataPath(id = '') { return `sharedTodos${id ? '/' + id : ''}`; }
-function diagnosticResult(message, failed = false) {
-  const target = $('diagnostic-result');
-  target.textContent = message;
-  target.classList.toggle('error', failed);
-}
-function diagnosticsContext() {
-  return `프로젝트: ${firebaseConfig.projectId}\nDB: ${firebaseConfig.databaseURL}\n경로: ${dataPath()}\n연결: ${connected}\n데이터 수신: ${loaded}`;
-}
-function detailedError(error) {
-  const code = String(error?.code || '코드 미확인');
-  return `${describeError(error)} [${code}]`;
-}
-// Firebase SDK의 get()은 서버 조회를 우선하지만 연결 상황에 따라 캐시 결과를 쓸 수 있습니다.
-// 따라서 이 검사는 SDK 재조회 검증이며 외부 서버의 독립적인 확증이라고 주장하지 않습니다.
-async function verifiedSnapshot(target, check, label) {
-  const snapshot = await get(target);
-  if (!check(snapshot)) {
-    throw new Error(`${label} 후 Firebase 데이터 재조회 결과가 예상과 달라요. 다시 누르기 전에 DB 콘솔에서 해당 항목을 확인해 주세요.`);
+  if (!shown.length) {
+    const empty = element('div', 'empty');
+    const heading = state.phase === 'error' ? '공유 목록에 접근할 수 없어요' : state.phase === 'loading' ? '공유 목록을 불러오는 중이에요' : state.phase === 'offline' ? '공유 목록 연결이 끊겼어요' : tasks.length ? '검색 조건에 맞는 할 일이 없어요' : '아직 등록된 할 일이 없어요';
+    const detail = state.phase === 'error' ? '연결 상태를 확인한 뒤 다시 불러오기를 눌러 주세요.' : state.phase === 'offline' ? '저장되지 않은 내용을 저장됐다고 표시하지 않습니다.' : tasks.length ? '검색어 또는 상태 필터를 바꿔보세요.' : '할 일 추가 버튼으로 시작해 보세요.';
+    empty.append(element('div', 'empty-icon', '✓'), element('h3', '', heading), element('p', '', detail)); fragment.append(empty);
   }
-  return snapshot;
+  $('task-list').replaceChildren(fragment); controls();
 }
+function closeDialog() { if (!state.busy) dialog.close(); }
 function openDialog(task = null) {
-  if (!loaded || !connected || busy) { notify('Firebase 연결 상태를 확인해 주세요.'); return; }
-  editingId = task ? task.id : null;
-  lastFocus = document.activeElement;
-  form.reset();
+  if (state.phase !== 'ready' || state.busy) return;
+  editingSnapshot = task ? { ...task } : null;
+  editing = Boolean(task); draftId = task?.id || newTaskId(); draftCreatedAt = task?.createdAt || Date.now();
+  focusBeforeDialog = document.activeElement;
+  $('task-form').reset(); $('form-error').textContent = '';
   $('dialog-heading').textContent = task ? '할 일 수정' : '새 할 일 추가';
   $('save-btn').textContent = task ? '변경 사항 저장' : '할 일 저장';
-  if (task) {
-    titleInput.value = task.title;
-    $('task-description').value = task.description;
-    $('task-priority').value = task.priority;
-    $('task-due').value = task.due;
-  }
-  dialog.showModal();
-  titleInput.focus();
+  if (task) for (const field of ['title', 'description', 'priority', 'due']) $('task-' + field).value = task[field];
+  dialog.showModal(); $('task-title').focus();
 }
-function closeDialog() { dialog.close(); }
-async function performWrite(operation, success) {
-  if (!loaded || !connected || busy) { notify('Firebase 연결을 확인한 뒤 다시 시도해 주세요.'); return false; }
-  busy = true;
-  updateControls();
+async function write(operation, success) {
+  if (state.phase !== 'ready' || state.busy) return false;
+  state.busy = true; $('form-error').textContent = ''; render();
   try {
-    await operation();
-    notify(typeof success === 'function' ? success() : success);
-    return true;
+    await operation(); notify(success); return true;
   } catch (error) {
-    console.error('Firebase 저장 실패:', error);
-    notify(detailedError(error));
-    diagnosticResult(`저장 실패\n${diagnosticsContext()}\n원인: ${detailedError(error)}`, true);
+    $('form-error').textContent = error.message;
+    $('diagnostic-result').textContent = `저장 실패 [${error.code || 'UNKNOWN'}]\n${error.message}`;
+    $('diagnostic-result').classList.add('error'); notify(error.message);
+    if (error.code === 'CONFLICT' || error.code === 'MISSING') await store.refresh();
     return false;
-  } finally {
-    busy = false;
-    updateControls();
-  }
+  } finally { state.busy = false; render(); }
 }
-
-// 모든 브라우저가 동일한 공개 할 일 목록을 실시간으로 구독합니다.
-function startWatching() {
-  const gen = ++watchGeneration;
-  if (stopTasks) { stopTasks(); stopTasks = null; }
-  if (stopConnection) { stopConnection(); stopConnection = null; }
-  tasks = [];
-  loaded = false;
-  connected = false;
-  $('diagnostic-path').textContent = dataPath();
-  diagnosticResult(`공개 공유 목록: ${dataPath()}\n현재 연결·권한 확인 중`);
-  setStatus('Firebase 데이터를 불러오는 중이에요…');
-  tasksRef = ref(db, dataPath());
-  stopConnection = onValue(ref(db, '.info/connected'), snap => {
-    if (gen !== watchGeneration) return;
-    connected = snap.val() === true;
-    if (!connected) setStatus('Firebase 연결이 끊겼어요. 연결되면 다시 저장할 수 있어요.', 'warning');
-    else if (loaded) setStatus('Firebase 실시간 동기화 연결됨', 'ready');
-    updateControls();
-  }, err => { if (gen === watchGeneration) setStatus(describeError(err), 'error'); });
-  stopTasks = onValue(tasksRef, snap => {
-    if (gen !== watchGeneration) return;
-    const records = snap.val();
-    tasks = records && typeof records === 'object' ? Object.entries(records).map(([key,val]) => normalizeTask(key,val)).filter(Boolean) : [];
-    loaded = true;
-    setStatus(connected ? 'Firebase 실시간 동기화 연결됨' : 'Firebase 데이터를 불러왔어요. 연결 상태를 확인 중이에요.', connected ? 'ready' : 'warning');
-    render();
-  }, err => {
-    if (gen !== watchGeneration) return;
-    loaded = false;
-    tasks = [];
-    setStatus(detailedError(err), 'error');
-    diagnosticResult(`데이터 구독 실패: ${detailedError(err)}\n${diagnosticsContext()}`, true);
-    render();
-  });
-  render();
-}
-$('today-label').textContent = new Intl.DateTimeFormat('ko-KR', {year:'numeric',month:'long',day:'numeric',weekday:'long'}).format(new Date());
 $('add-btn').addEventListener('click', () => openDialog());
-$('dialog-close').addEventListener('click', closeDialog);
-$('cancel-btn').addEventListener('click', closeDialog);
-dialog.addEventListener('click', e => { if (e.target === dialog && !busy) closeDialog(); });
-dialog.addEventListener('cancel', e => { if (busy) e.preventDefault(); });
-dialog.addEventListener('close', () => { if (lastFocus && lastFocus.isConnected) lastFocus.focus(); });
-titleInput.addEventListener('input', () => titleInput.setCustomValidity(''));
-form.addEventListener('submit', async e => {
-  e.preventDefault();
-  const title = titleInput.value.trim();
-  if (!title) { titleInput.setCustomValidity('할 일 제목을 입력해 주세요.'); titleInput.reportValidity(); return; }
-  titleInput.setCustomValidity('');
-  const values = {
-    title, description: $('task-description').value.trim(),
-    priority: $('task-priority').value, due: $('task-due').value
-  };
-  const id = editingId;
-  const ok = await performWrite(async () => {
-    if (id) {
-      const stamp = Date.now();
-      const result = await runTransaction(ref(db, dataPath(id)), current => {
-        if (!current || typeof current.title !== 'string') return;
-        return {...current, ...values, updatedAt: stamp};
-      }, {applyLocally:false});
-      if (!result.committed) throw new Error('이미 삭제된 할 일이에요.');
-      await verifiedSnapshot(ref(db, dataPath(id)), snap => snap.exists() && snap.val()?.title === values.title && snap.val()?.description === values.description && snap.val()?.due === values.due && snap.val()?.priority === values.priority, '수정');
-    } else {
-      const newRef = push(tasksRef);
-      const stamp = Date.now();
-      await set(newRef, {...values, done:false, createdAt:stamp, updatedAt:stamp});
-      await verifiedSnapshot(newRef, snap => snap.exists() && snap.val()?.title === values.title, '추가');
-    }
-  }, id ? '할 일을 수정했어요.' : 'Firebase에 할 일을 추가했어요.');
-  if (ok) closeDialog();
+for (const id of ['cancel-btn', 'dialog-close']) $(id).addEventListener('click', closeDialog);
+dialog.addEventListener('cancel', event => { if (state.busy) event.preventDefault(); });
+dialog.addEventListener('close', () => focusBeforeDialog?.focus());
+dialog.addEventListener('click', event => { if (event.target === dialog) { const bounds = dialog.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeDialog(); } });
+$('task-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const fields = Object.fromEntries(['title', 'description', 'priority', 'due'].map(key => [key, $('task-' + key).value]));
+  const ok = await write(() => editing ? store.update(draftId, fields, editingSnapshot) : store.create(draftId, fields, draftCreatedAt), editing ? '변경 사항을 저장했어요.' : '할 일을 저장했어요.');
+  if (ok) dialog.close();
 });
-list.addEventListener('change', async e => {
-  const target = e.target.closest('input[data-action="toggle"]');
-  if (!target) return;
-  const id = target.dataset.id;
-  const desired = target.checked;
-  target.checked = !desired;
-  await performWrite(async () => {
-    const stamp = Date.now();
-    const result = await runTransaction(ref(db, dataPath(id)), current => {
-      if (!current || typeof current.title !== 'string') return;
-      return {...current, done: desired, updatedAt:stamp};
-    }, {applyLocally:false});
-    if (!result.committed) throw new Error('이미 삭제된 할 일이에요.');
-    await verifiedSnapshot(ref(db, dataPath(id)), snap => snap.exists() && snap.val()?.done === desired, '완료 상태 수정');
-  }, desired ? '할 일을 완료했어요! 🎉' : '진행 중으로 변경했어요.');
-});
-list.addEventListener('click', async e => {
-  const target = e.target.closest('button[data-action]');
-  if (!target) return;
-  const task = tasks.find(t => t.id === target.dataset.id);
-  if (!task) { notify('해당 할 일을 찾을 수 없어요.'); return; }
-  if (target.dataset.action === 'edit') { openDialog(task); return; }
-  if (target.dataset.action === 'delete') {
-    if (!window.confirm(`“${task.title}” 할 일을 삭제할까요?\n삭제하면 되돌릴 수 없습니다.`)) return;
-    await performWrite(async () => {
-      const targetRef = ref(db, dataPath(task.id));
-      await remove(targetRef);
-      await verifiedSnapshot(targetRef, snap => !snap.exists(), '삭제');
-    }, 'Firebase에서 할 일을 삭제했어요.');
+$('task-list').addEventListener('click', async event => {
+  const button = event.target.closest('[data-action]');
+  if (!button || state.busy || state.phase !== 'ready') return;
+  const task = state.tasks.find(task => task.id === button.dataset.id);
+  if (!task) return;
+  if (button.dataset.action === 'edit') return openDialog(task);
+  if (button.dataset.action === 'toggle') {
+    const done = button.checked;
+    const ok = await write(() => store.update(task.id, { done }), done ? '완료했어요.' : '완료를 취소했어요.');
+    if (!ok) render();
   }
+  if (button.dataset.action === 'delete' && confirm(`“${task.title}”을 공유 목록에서 삭제할까요?`)) await write(() => store.remove(task.id), '할 일을 삭제했어요.');
 });
-document.querySelectorAll('[data-filter]').forEach(btn => btn.addEventListener('click', () => { filter = btn.dataset.filter; render(); }));
-$('search').addEventListener('input', e => { keyword = e.target.value.trim().toLocaleLowerCase(); render(); });
-
-// 이전 버전의 localStorage는 읽기만 하며, 명시적 클릭 전에는 Firebase에 업로드하지 않습니다.
-// UUID 또는 임의 문자열에서 결정적 Firebase key를 생성하여 재시도 시 중복/덮어쓰기를 방지합니다.
-async function legacyKey(id) {
-  const bytes = new TextEncoder().encode(id);
-  const hash = await crypto.subtle.digest('SHA-256', bytes);
-  return `legacy_${Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2,'0')).join('')}`;
-}
-$('import-btn').addEventListener('click', async () => {
-  const legacy = readLegacy();
-  if (!legacy.length) return;
-  if (!window.confirm(`이 브라우저에 저장된 이전 할 일 ${legacy.length}개를 공개 공유 목록으로 가져올까요? 접속한 누구나 볼 수 있어요.\n기존 브라우저 데이터는 삭제하지 않습니다. 이미 가져온 항목은 다시 덮어쓰지 않습니다.`)) return;
-  let imported = 0;
-  let already = 0;
-  const ok = await performWrite(async () => {
-    for (const task of legacy) {
-      const id = await legacyKey(task.id);
-      const {title, description, priority, due, done, createdAt} = task;
-      const stamp = Date.now();
-      const result = await runTransaction(ref(db, dataPath(id)), current => {
-        if (current !== null) return; // 이미 업로드한 항목은 수정하지 않음
-        return {title, description, priority, due, done, createdAt:createdAt || stamp, updatedAt:stamp};
-      }, {applyLocally:false});
-      if (result.committed) imported++;
-      else already++;
-    }
-  }, () => `Firebase 가져오기 완료: 신규 ${imported}개, 기존 ${already}개`);
-  // 성공/부분 실패 모두 localStorage 원본은 그대로 유지합니다.
-  if (!ok) notify(`가져오기 중 중단됐어요. 성공 ${imported}개, 기존 ${already}개. 재시도해도 중복 생성되지 않아요.`);
-});
-
-startWatching();
-render();
-
-// 진단은 버튼 클릭 시에만 작동합니다. 테스트 항목은 별도 고유 ID로 만들고 삭제합니다.
+for (const button of document.querySelectorAll('[data-filter]')) button.addEventListener('click', () => { state.filter = button.dataset.filter; render(); });
+$('search').addEventListener('input', event => { state.query = event.target.value.trim().toLocaleLowerCase(); render(); });
+$('retry-btn').addEventListener('click', () => store.retry());
+window.addEventListener('offline', () => { state.phase = 'offline'; state.error = null; render(); });
+window.addEventListener('online', () => store.retry());
+window.addEventListener('pagehide', () => store.stop());
+window.addEventListener('pageshow', event => { if (event.persisted) store.resume(); });
+$('diagnostic-project').textContent = firebaseConfig.projectId;
+$('diagnostic-url').textContent = firebaseConfig.databaseURL;
+$('diagnostic-path').textContent = TODO_PATH;
 $('read-test-btn').addEventListener('click', async () => {
-  if (!connected || busy) return;
-  $('read-test-btn').disabled = true;
-  try {
-    const snap = await get(ref(db, dataPath()));
-    const count = snap.exists() && typeof snap.val() === 'object' ? Object.keys(snap.val()).length : 0;
-    diagnosticResult(`Firebase SDK 읽기 확인 성공 (현재 항목 ${count}개)\n${diagnosticsContext()}\n※ 읽기 성공만으로 쓰기 권한이나 실제 서버 반영이 보장되지는 않습니다.`);
-  } catch (error) {
-    diagnosticResult(`Firebase 읽기 실패: ${detailedError(error)}\n${diagnosticsContext()}`, true);
-  } finally { updateControls(); }
+  try { await store.checkRead(); $('diagnostic-result').textContent = '읽기 확인 성공 · 인증정보 없이 서버 응답 확인'; $('diagnostic-result').classList.remove('error'); }
+  catch (error) { $('diagnostic-result').textContent = `${error.message} [${error.code}]`; $('diagnostic-result').classList.add('error'); }
 });
 $('write-test-btn').addEventListener('click', async () => {
-  if (!connected || !loaded || busy) return;
-  if (!window.confirm('Firebase에 임시 할 일 1개를 생성한 뒤 실제 재조회하고 삭제합니다. 진행할까요?')) return;
-  busy = true;
-  updateControls();
-  const target = push(tasksRef);
-  const stamp = Date.now();
-  let wrote = false;
-  let removed = false;
-  let failure = null;
-  try {
-    await set(target, { title: '[연결 진단] 임시 할 일', description: '', priority: 'low', due: '', done: false, createdAt:stamp, updatedAt:stamp });
-    wrote = true;
-    await verifiedSnapshot(target, snap => snap.exists() && snap.val()?.title === '[연결 진단] 임시 할 일', '임시 기록');
-    await remove(target);
-    removed = true;
-    await verifiedSnapshot(target, snap => !snap.exists(), '임시 기록 삭제');
-    diagnosticResult(`Firebase SDK 쓰기·재조회·삭제 확인 완료 (콘솔에서 최종 확인 필요)\n${diagnosticsContext()}\n임시 항목: ${target.key} (삭제 확인 완료)`);
-  } catch (error) {
-    failure = error;
-    diagnosticResult(`Firebase 테스트 실패: ${detailedError(error)}\n${diagnosticsContext()}\n임시 항목: ${target.key}\n${wrote && !removed ? '임시 항목이 남아 있을 수 있어요. Firebase 콘솔에서 직접 확인해 주세요.' : '쓰기 권한·연결 상태를 확인해 주세요.'}`, true);
-  } finally {
-    busy = false;
-    updateControls();
-  }
-  if (failure) console.error('Firebase 진단 실패:', failure);
+  if (!confirm('공유 목록에 임시 항목 1개를 만들고 삭제해 저장 권한을 확인할까요?')) return;
+  const id = newTaskId(); let created = false;
+  await write(async () => {
+    try {
+      await store.create(id, { title: '임시 저장 권한 확인', description: '', priority: 'low', due: '' }); created = true;
+      await store.remove(id); created = false;
+      $('diagnostic-result').textContent = '쓰기·삭제 확인 완료'; $('diagnostic-result').classList.remove('error');
+    } catch (error) { if (created) error.message += ` 임시 항목이 남을 수 있어요: ${id}`; throw error; }
+  }, '임시 항목 저장·삭제를 확인했어요.');
 });
 $('copy-diagnostic-btn').addEventListener('click', async () => {
-  const summary = `${diagnosticsContext()}\n진단: ${$('diagnostic-result').textContent}`;
-  try { await navigator.clipboard.writeText(summary); notify('진단 내용을 복사했어요. (비밀번호/토큰은 포함되지 않음)'); }
-  catch { notify('복사에 실패했습니다. 진단 내용을 직접 선택해 복사해 주세요.'); }
+  try { await navigator.clipboard.writeText(`프로젝트: ${firebaseConfig.projectId}\nDB: ${firebaseConfig.databaseURL}\n경로: ${TODO_PATH}\n상태: ${state.phase}\n${$('diagnostic-result').textContent}`); notify('연결 상태를 복사했어요.'); }
+  catch { notify('복사하지 못했어요. 화면의 연결 상태를 직접 선택해 복사해 주세요.'); }
 });
+$('today-label').textContent = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
+render(); store.watch();

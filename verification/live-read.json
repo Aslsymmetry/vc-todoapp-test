@@ -1,0 +1,17 @@
+{
+  "time": "2026-10-10T02:16:08.522Z",
+  "httpStatus": 401,
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://todo-backend-8ac43-default-rtdb.firebaseio.com/sharedTodos.json",
+      "hasCredential": false
+    }
+  ],
+  "uiStatus": "Firebase에서 접근 권한을 거부했어요. 공개 공유 경로의 DB 규칙 적용이 필요해요.",
+  "addDisabled": true,
+  "writesPerformed": 0,
+  "accountsCreated": 0,
+  "adminAccess": false,
+  "actualCrud": "NOT RUN"
+}
