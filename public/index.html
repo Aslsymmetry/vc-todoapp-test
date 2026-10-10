@@ -110,9 +110,6 @@
     .secondary-btn { border: 1px solid #e8e8ef; padding: 11px 17px; border-radius: 11px; background: white; font-size: 13px; color: #6d728b; font-weight: 730; }
     .toast { position: fixed; bottom: 28px; left: 50%; transform: translate(-50%, 20px); padding: 12px 18px; border-radius: 12px; background: #292940; box-shadow: 0 10px 30px rgba(0,0,0,.15); color: white; font-size: 13px; opacity: 0; pointer-events: none; transition: transform .2s, opacity .2s; z-index: 10; max-width: calc(100vw - 36px); text-align: center; }
     .toast.show { opacity: 1; transform: translate(-50%, 0); }
-    .account { display: none; align-items: center; gap: 10px; font-size: 12px; color: #747993; }
-    .account.visible { display: flex; }
-    .account-email { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .small-btn { font-size: 12px; padding: 8px 11px; border-radius: 9px; background: #f0eeff; color: var(--primary); border: 0; font-weight: 700; }
     .section-buttons { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
     .status { display: flex; align-items: center; gap: 9px; padding: 12px 16px; margin: 18px 0 0; border: 1px solid #dedaff; border-radius: 13px; background: #f0eeff; color: #6257bd; font-size: 12px; font-weight: 650; }
@@ -129,18 +126,10 @@
     .version-label { color: #c2c0dc; font-size: 11px; margin-top: 5px; }
     .add-btn:disabled, .small-btn:disabled, .check:disabled, .icon-btn:disabled { opacity: .47; cursor: not-allowed; transform: none; }
     [hidden] { display: none !important; }
-    .auth-overlay { position: fixed; z-index: 20; inset: 0; background: rgba(25, 27, 53, .49); display: grid; place-items: center; padding: 20px; }
-    .auth-card { width: min(100%, 410px); background: #fff; padding: 32px; border-radius: 22px; box-shadow: 0 24px 65px rgba(25,25,55,.25); }
-    .auth-card h2 { font-size: 23px; letter-spacing: -.7px; margin: 0 0 9px; }
-    .auth-card p { font-size: 13px; line-height: 1.7; color: #777b97; margin: 0 0 23px; }
-    .auth-error { min-height: 20px; margin: 12px 0 0; color: #c84f5d; font-size: 12px; }
-    .auth-foot { display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 18px; font-size: 12px; color: #787d93; }
     .link-btn { border: none; background: none; color: var(--primary); font-size: 12px; font-weight: 750; padding: 4px; }
     .secondary-btn:hover { background: #f8f7fd; }
 
     @media (max-width: 680px) {
-      .account-email { max-width: 90px; }
-      .auth-card { padding: 26px 20px; }
 
       .app { padding: 0 16px 38px; }
       .topbar { padding: 23px 0; }
@@ -176,14 +165,14 @@
         </div>
         <div><div class="brand-name">하루<span style="color:#6657ef">.</span></div><div class="brand-subtitle">나만의 작은 할 일 관리</div></div>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px"><time class="today-label" id="today-label"></time><div id="account" class="account"><span id="account-email" class="account-email"></span><button type="button" id="logout-btn" class="small-btn">로그아웃</button></div></div>
+      <time class="today-label" id="today-label"></time>
     </header>
 
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-copy">
         <div class="eyebrow">MY DAILY PLANNER</div>
         <h1 id="hero-title">작은 일부터, 하나씩.</h1>
-        <p>오늘의 계획을 기록하고 하나씩 완성해 보세요.<br>꾸준한 하루가 모여 큰 변화를 만들어요.</p><div class="version-label">Firebase 실시간 저장 · Vercel 준비 v2</div>
+        <p>오늘의 계획을 기록하고 하나씩 완성해 보세요.<br>꾸준한 하루가 모여 큰 변화를 만들어요.</p><div class="version-label">Firebase 실시간 저장 · 모두의 공유 목록</div>
       </div>
       <div class="hero-progress">
         <div class="progress-line"><strong id="percent">0%</strong><span>전체 달성률</span></div>
@@ -196,13 +185,13 @@
       <summary>Firebase 연결 상태·실제 저장 경로 확인</summary>
       <div>프로젝트: <strong id="diagnostic-project">todo-backend-8ac43</strong></div>
       <div>데이터베이스: <code id="diagnostic-url">https://todo-backend-8ac43-default-rtdb.firebaseio.com/</code></div>
-      <div>데이터 경로: <code id="diagnostic-path">로그인 전</code></div>
+      <div>데이터 경로: <code id="diagnostic-path">sharedTodos</code></div>
       <div class="diagnostic-actions">
         <button type="button" id="read-test-btn" class="small-btn" disabled>읽기 권한 확인</button>
         <button type="button" id="write-test-btn" class="small-btn" disabled>임시 쓰기·읽기·삭제 테스트</button>
         <button type="button" id="copy-diagnostic-btn" class="small-btn">진단 결과 복사</button>
       </div>
-      <div id="diagnostic-result" class="diagnostic-result" role="status">로그인한 다음 읽기/쓰기 테스트를 수행할 수 있어요. 테스트는 버튼을 눌렀을 때만 시작돼요.</div>
+      <div id="diagnostic-result" class="diagnostic-result" role="status">공개 공유 목록의 읽기/쓰기 상태를 확인할 수 있어요. 테스트는 버튼을 눌렀을 때만 시작돼요.</div>
     </details>
 
     <section class="stats" aria-label="할 일 통계">
@@ -226,7 +215,7 @@
       </div>
       <div class="task-list" id="task-list" aria-live="polite"></div>
     </section>
-    <footer class="footer">당신의 하루를 응원해요 ✦ · 할 일은 Firebase Realtime Database에 저장됩니다.</footer>
+    <footer class="footer">공개 공유 목록 · 접속한 누구나 할 일을 보고 수정·삭제할 수 있습니다.</footer>
   </main>
 
   <dialog id="task-dialog" class="dialog" aria-labelledby="dialog-heading">
@@ -242,28 +231,12 @@
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <div id="auth-overlay" class="auth-overlay" role="region" aria-label="Firebase 계정 로그인">
-    <section class="auth-card">
-      <h2 id="auth-title">Firebase 계정 로그인</h2>
-      <p>할 일을 안전하게 저장하고 다른 기기에서도 이용하려면 같은 계정으로 로그인하세요.</p>
-      <form id="auth-form" onsubmit="return false">
-        <label class="field"><span class="field-label">이메일</span><input type="email" class="control" id="auth-email" required maxlength="254" autocomplete="email" placeholder="example@email.com"></label>
-        <label class="field"><span class="field-label">비밀번호</span><input type="password" class="control" id="auth-password" required minlength="6" autocomplete="current-password" placeholder="6자 이상"></label>
-        <button type="submit" class="add-btn" id="auth-submit" disabled style="justify-content:center;width:100%;margin-top:3px">로그인</button>
-        <div id="auth-error" class="auth-error" role="alert"></div>
-      </form>
-      <div class="auth-foot"><span id="auth-switch-text">계정이 없나요?</span><button type="button" class="link-btn" id="auth-toggle" disabled>회원가입</button></div>
-    </section>
-  </div>
-
   <script type="module">
     import('./app.js').catch(error => {
       console.error('하루 앱 모듈 로드 실패', error);
       const message = '앱 실행 실패: Firebase JavaScript SDK를 불러오지 못했습니다. 인터넷 연결·브라우저 개발자 도구의 Console/Network 탭을 확인해 주세요.';
       const status = document.getElementById('status');
       if (status) { status.textContent = message; status.className = 'status error'; }
-      const authError = document.getElementById('auth-error');
-      if (authError) authError.textContent = message;
     });
   </script>
 </body>

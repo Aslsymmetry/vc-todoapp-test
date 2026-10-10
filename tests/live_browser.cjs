@@ -1,39 +1,112 @@
-// Explicit live test: creates temporary accounts and only deletes its own data/accounts.
-// npm install --no-save playwright; HARU_LIVE_TEST=1 node tests/live_browser.cjs
-const assert=require('node:assert/strict');
-const fs=require('node:fs');
-const {chromium}=require(process.env.HARU_PLAYWRIGHT_MODULE || 'playwright');
-const BASE='https://todo-backend-8ac43-default-rtdb.firebaseio.com';
-const KEY='AIzaSyC-hSK4pFaXJUXx1pW-gNBM5rbN95R3pg8';
-if(process.env.HARU_LIVE_TEST!=='1')throw Error('Set HARU_LIVE_TEST=1 to authorize temporary test data');
-const results=[];const identities=[];
-function record(test,status,detail=''){results.push({test,status,detail});console.log(status,test,detail)}
-async function identity(page){return page.evaluate(async()=>{const {getAuth}=await import('https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js');const u=getAuth().currentUser;return {uid:u.uid,token:await u.getIdToken()}})}
-async function rest(path,token,method='GET',body){const r=await fetch(`${BASE}/${path}.json${token?'?auth='+encodeURIComponent(token):''}`,{signal:AbortSignal.timeout(20000),method,body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,value:await r.json()}}
-(async()=>{
- const browser=await chromium.launch({channel:'chrome',headless:true});
- try{
- const c1=await browser.newContext(), c2=await browser.newContext(), c3=await browser.newContext();
- const p=await c1.newPage(), q=await c2.newPage(), other=await c3.newPage();
- const email=`haru-e2e-${Date.now()}@example.com`,password=require('node:crypto').randomBytes(20).toString('hex');
- async function login(page,signup,emailValue=email,navigate=true){if(navigate)await page.goto('http://127.0.0.1:3000/index.html');await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('로그인하면'));if(signup)await page.locator('#auth-toggle').click();await page.locator('#auth-email').fill(emailValue);await page.locator('#auth-password').fill(password);await page.locator('#auth-submit').click();await page.waitForFunction(()=>!document.querySelector('#auth-overlay').hidden || !document.querySelector('#add-btn').disabled);try{await page.waitForFunction(()=>!document.querySelector('#add-btn').disabled,{},{timeout:20000})}catch(e){throw Error(await page.locator('#auth-error').textContent() || e.message)}}
- await login(p,true);const a=await identity(p);identities.push(a);record('real Firebase signup/initial read','PASS',`todos/${a.uid}`);
- await login(q,false);record('second independent browser login','PASS');
- await p.locator('#add-btn').click();await p.locator('#task-title').fill('밥먹기');await p.locator('#task-description').fill('HARU E2E temporary');await p.locator('#task-priority').selectOption('high');await p.locator('#task-due').fill('2026-10-20');await p.locator('#save-btn').click();await p.waitForFunction(()=>!document.querySelector('#task-dialog').open);
- let remote=await rest(`todos/${a.uid}`,a.token);assert.equal(remote.status,200);const id=Object.keys(remote.value)[0];assert.equal(remote.value[id].title,'밥먹기');assert.equal(remote.value[id].priority,'high');record('create + independent REST read','PASS',`todos/${a.uid}/${id}`);
- await q.waitForFunction(()=>document.querySelector('.task-title')?.textContent==='밥먹기');record('two browser realtime create sync','PASS');
- await p.locator('[data-action=edit]').click();await p.locator('#task-title').fill('밥 또먹기');await p.locator('#save-btn').click();await p.waitForFunction(()=>!document.querySelector('#task-dialog').open);assert.equal((await rest(`todos/${a.uid}/${id}`,a.token)).value.title,'밥 또먹기');await q.waitForFunction(()=>document.querySelector('.task-title')?.textContent==='밥 또먹기');record('edit + REST + realtime sync','PASS');
- // The app waits for server acknowledgement before changing the checkbox.
- await p.locator('[data-action=toggle]').click();await p.waitForFunction(()=>document.querySelector('#done-count').textContent==='1');assert.equal((await rest(`todos/${a.uid}/${id}`,a.token)).value.done,true);record('complete + REST','PASS');
- await p.locator('[data-filter=active]').click();assert.equal(await p.locator('.task').count(),0);await p.locator('[data-filter=done]').click();assert.equal(await p.locator('.task').count(),1);await p.locator('#search').fill('없는 항목');assert.equal(await p.locator('.task').count(),0);await p.locator('#search').fill('밥');assert.equal(await p.locator('.task').count(),1);record('filters/search/progress/metadata','PASS');
- await p.waitForFunction(()=>!document.querySelector('#add-btn').disabled);await p.locator('#logout-btn').click();await p.waitForFunction(()=>!document.querySelector('#auth-overlay').hidden);await login(p,false,email,false);assert.equal(await p.locator('.task-title').textContent(),'밥 또먹기');await p.reload();await p.waitForFunction(()=>!document.querySelector('#add-btn').disabled);assert.equal(await p.locator('.task-title').textContent(),'밥 또먹기');record('logout/login/reload persistence','PASS');await p.screenshot({path:process.env.HARU_SCREENSHOT||'tests/live-screen.png',fullPage:true});
- await login(other,true,`haru-e2e-other-${Date.now()}@example.com`);const b=await identity(other);identities.push(b);
- for(const [name,token] of [['anonymous',null],['other account',b.token]]){const read=await rest(`todos/${a.uid}/${id}`,token);record(`${name} read isolation`,read.status===401||read.status===403?'PASS':'FAIL',`HTTP ${read.status}`);const w=await rest(`todos/${a.uid}/isolation_probe`,token,'PUT',{title:'test only',description:'',priority:'low',due:'',done:false,createdAt:Date.now(),updatedAt:Date.now()});record(`${name} write isolation`,w.status===401||w.status===403?'PASS':'FAIL',`HTTP ${w.status}`);if(w.status===200)await rest(`todos/${a.uid}/isolation_probe`,a.token,'DELETE')}
- const invalid=await rest(`todos/${a.uid}/invalid_probe`,a.token,'PUT',{title:'',description:'',priority:'low',due:'',done:false,createdAt:Date.now(),updatedAt:Date.now()});assert.ok([401,403].includes(invalid.status));record('invalid task rejected by real rules','PASS',`HTTP ${invalid.status}`);
- await p.locator('#diagnostics summary').click();await p.locator('#read-test-btn').click();await p.waitForFunction(()=>document.querySelector('#diagnostic-result').textContent.includes('읽기 확인 성공'));p.once('dialog',d=>d.accept());await p.locator('#write-test-btn').click();await p.waitForFunction(()=>document.querySelector('#diagnostic-result').textContent.includes('확인 완료'));assert.equal(Object.keys((await rest(`todos/${a.uid}`,a.token)).value).length,1);record('real SDK read/write/delete diagnostics','PASS');
- await c1.setOffline(true);await p.waitForFunction(()=>document.querySelector('#add-btn').disabled);record('offline writes disabled','PASS');await c1.setOffline(false);await p.waitForFunction(()=>!document.querySelector('#add-btn').disabled);
- p.once('dialog',d=>d.accept());await p.locator('[data-action=delete]').click();await p.waitForFunction(()=>document.querySelector('#total-count').textContent==='0' && !document.querySelector('#add-btn').disabled);assert.equal((await rest(`todos/${a.uid}/${id}`,a.token)).value,null);await q.waitForFunction(()=>document.querySelector('#total-count').textContent==='0');record('delete + independent REST + sync','PASS');
-
- }catch(e){record('live test execution','FAIL',String(e.message));process.exitCode=1}
- finally{for(const a of identities){const clean=await rest(`todos/${a.uid}`,a.token,'DELETE');record('temporary test data cleanup',clean.status===200?'PASS':'FAIL',a.uid);const r=await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${KEY}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idToken:a.token})});record('temporary account cleanup',r.ok?'PASS':'FAIL',`HTTP ${r.status}`)}await browser.close();fs.writeFileSync(process.env.HARU_REPORT||'tests/live-results.json',JSON.stringify({time:new Date().toISOString(),results},null,2));if(results.some(r=>r.status==='FAIL'))process.exitCode=1}
+// Uses no account or authentication. Creates and removes only its own shared test task.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const { chromium } = require(process.env.HARU_PLAYWRIGHT_MODULE || 'playwright');
+const base = 'https://todo-backend-8ac43-default-rtdb.firebaseio.com';
+if (process.env.HARU_LIVE_TEST !== '1') throw Error('Set HARU_LIVE_TEST=1 for disposable shared test data');
+const results = [];
+let testId;
+function record(test, status, detail = '') {
+  results.push({ test, status, detail });
+  console.log(status, test, detail);
+}
+async function rest(path, method = 'GET', body) {
+  const response = await fetch(`${base}/${path}.json`, {
+    method, signal: AbortSignal.timeout(20000),
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  return { status: response.status, value: await response.json() };
+}
+(async () => {
+  let browser;
+  try {
+    const access = await rest('sharedTodos');
+    assert.equal(access.status, 200, 'sharedTodos rules must be published before this test');
+    browser = await chromium.launch({ channel: 'chrome', headless: true });
+    const c1 = await browser.newContext();
+    const c2 = await browser.newContext();
+    const p = await c1.newPage();
+    const q = await c2.newPage();
+    for (const page of [p, q]) {
+      await page.goto('http://127.0.0.1:3000/index.html');
+      await page.waitForFunction(() => !document.querySelector('#add-btn').disabled);
+      assert.equal(await page.locator('#auth-overlay, #auth-form').count(), 0);
+    }
+    record('two browsers start without accounts', 'PASS');
+    const title = `[HARU disposable ${Date.now()}]`;
+    await p.locator('#add-btn').click();
+    await p.locator('#task-title').fill(title);
+    await p.locator('#task-description').fill('<img src=x onerror=alert(1)>');
+    await p.locator('#task-priority').selectOption('high');
+    await p.locator('#task-due').fill('2026-10-20');
+    await p.locator('#save-btn').click();
+    await p.waitForFunction(() => !document.querySelector('#task-dialog').open);
+    const tasks = (await rest('sharedTodos')).value;
+    testId = Object.keys(tasks).find(id => tasks[id].title === title);
+    assert.ok(testId);
+    const path = `sharedTodos/${testId}`;
+    record('create and independent REST read', 'PASS', path);
+    await q.getByText(title, { exact: true }).waitFor();
+    assert.equal(await p.locator('.task-desc img').count(), 0);
+    record('realtime sharing and HTML rendered as text', 'PASS');
+    await p.locator('#search').fill(title);
+    await p.locator('[data-action=edit]').click();
+    const edited = title + ' edited';
+    await p.locator('#task-title').fill(edited);
+    await p.locator('#save-btn').click();
+    await p.waitForFunction(() => !document.querySelector('#task-dialog').open);
+    assert.equal((await rest(path)).value.title, edited);
+    await q.getByText(edited, { exact: true }).waitFor();
+    record('edit and realtime sync', 'PASS');
+    await p.locator('[data-action=toggle]').click();
+    await p.waitForFunction(() => !document.querySelector('#add-btn').disabled);
+    assert.equal((await rest(path)).value.done, true);
+    await p.locator('[data-filter=active]').click();
+    assert.equal(await p.locator('.task').count(), 0);
+    await p.locator('[data-filter=done]').click();
+    assert.equal(await p.locator('.task').count(), 1);
+    record('complete, search and filters', 'PASS');
+    await p.reload();
+    await p.waitForFunction(() => !document.querySelector('#add-btn').disabled);
+    await p.getByText(edited, { exact: true }).waitFor();
+    record('reload persistence without accounts', 'PASS');
+    const current = (await rest(path)).value;
+    for (const [name, invalid] of [
+      ['blank title', { ...current, title: '' }],
+      ['oversized title', { ...current, title: 'x'.repeat(121) }],
+      ['extra field', { ...current, unexpected: 'blocked' }],
+      ['changed creation time', { ...current, createdAt: current.createdAt + 1 }],
+      ['wrong completion type', { ...current, done: 'true' }]
+    ]) {
+      const result = await rest(path, 'PUT', invalid);
+      assert.ok([401, 403].includes(result.status), name);
+      record(`server rejects ${name}`, 'PASS', `HTTP ${result.status}`);
+    }
+    const root = await fetch(`${base}/.json`, { method: 'HEAD' });
+    assert.ok([401, 403].includes(root.status));
+    record('root access denied', 'PASS', `HTTP ${root.status}`);
+    await p.locator('#search').fill(title);
+    await c1.setOffline(true);
+    await p.waitForFunction(() => document.querySelector('#add-btn').disabled);
+    await c1.setOffline(false);
+    await p.waitForFunction(() => !document.querySelector('#add-btn').disabled);
+    record('offline writes disabled and reconnect', 'PASS');
+    p.once('dialog', d => d.accept());
+    await p.locator('[data-action=delete]').click();
+    await p.waitForFunction(() => !document.querySelector('#add-btn').disabled);
+    assert.equal((await rest(path)).value, null);
+    await q.getByText(edited, { exact: true }).waitFor({ state: 'detached' });
+    record('delete and independent REST + sync', 'PASS');
+  } catch (error) {
+    record('live shared test', 'FAIL', error.message);
+    process.exitCode = 1;
+  } finally {
+    if (testId) {
+      const cleanup = await rest(`sharedTodos/${testId}`, 'DELETE');
+      record('only disposable task cleanup', cleanup.status === 200 ? 'PASS' : 'FAIL', testId);
+    }
+    if (browser) await browser.close();
+    fs.writeFileSync(process.env.HARU_REPORT || 'tests/live-results.json',
+      JSON.stringify({ time: new Date().toISOString(), results }, null, 2));
+  }
 })();

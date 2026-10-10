@@ -1,10 +1,8 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js';
-import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js';
 import { getDatabase, ref, push, set, remove, onValue, runTransaction, get } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyC-hSK4pFaXJUXx1pW-gNBM5rbN95R3pg8',
-  authDomain: 'todo-backend-8ac43.firebaseapp.com',
   projectId: 'todo-backend-8ac43',
   databaseURL: 'https://todo-backend-8ac43-default-rtdb.firebaseio.com/',
   storageBucket: 'todo-backend-8ac43.firebasestorage.app',
@@ -12,7 +10,6 @@ const firebaseConfig = {
   appId: '1:922372533680:web:f363064bb1c8e08dff3a75'
 };
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
 const db = getDatabase(app);
 const $ = (id) => document.getElementById(id);
 const list = $('task-list');
@@ -21,7 +18,6 @@ const form = $('task-form');
 const titleInput = $('task-title');
 const status = $('status');
 let tasks = [];
-let user = null;
 let tasksRef = null;
 let stopTasks = null;
 let stopConnection = null;
@@ -32,9 +28,8 @@ let lastFocus = null;
 let busy = false;
 let loaded = false;
 let connected = false;
-let signingUp = false;
 let toastTimer;
-let authGeneration = 0;
+let watchGeneration = 0;
 
 const ICON_EDIT = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L9 17l-4 1 1-4Z"/></svg>';
 const ICON_DELETE = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>';
@@ -53,18 +48,6 @@ function setStatus(message, kind = '') {
 }
 function describeError(error) {
   const map = {
-    'auth/invalid-credential': '이메일이나 비밀번호가 올바르지 않아요.',
-    'auth/wrong-password': '비밀번호가 올바르지 않아요.',
-    'auth/user-not-found': '등록된 계정이 없어요.',
-    'auth/email-already-in-use': '이미 가입된 이메일이에요.',
-    'auth/weak-password': '비밀번호는 6자 이상으로 입력해 주세요.',
-    'auth/invalid-email': '이메일 주소 형식을 확인해 주세요.',
-    'auth/operation-not-allowed': 'Firebase 콘솔에서 이메일/비밀번호 로그인 방식을 먼저 사용 설정해 주세요.',
-    'auth/unauthorized-domain': 'Firebase Authentication의 허용 도메인 설정을 확인해 주세요.',
-    'auth/configuration-not-found': 'Firebase 콘솔 → Authentication에서 ‘시작하기’를 누른 뒤 이메일/비밀번호 로그인을 활성화해 주세요.',
-    'auth/invalid-api-key': 'Firebase 웹 앱 API 키 설정이 유효하지 않아요.',
-    'auth/too-many-requests': '요청이 많아 잠시 제한됐어요. 잠시 후 다시 시도해 주세요.',
-    'auth/network-request-failed': '네트워크 연결을 확인해 주세요.',
     'PERMISSION_DENIED': 'Firebase Realtime Database 보안 규칙을 확인해 주세요.',
     'permission_denied': 'Firebase Realtime Database 보안 규칙을 확인해 주세요.'
   };
@@ -110,13 +93,13 @@ function readLegacy() {
   } catch (_) { return []; }
 }
 function updateControls() {
-  const enabled = Boolean(user && loaded && connected && !busy);
+  const enabled = Boolean(loaded && connected && !busy);
   $('add-btn').disabled = !enabled;
   $('save-btn').disabled = !enabled;
   const legacy = readLegacy();
-  $('import-btn').hidden = !user || !loaded || !legacy.length;
+  $('import-btn').hidden = !loaded || !legacy.length;
   $('import-btn').disabled = !enabled;
-  $('read-test-btn').disabled = !Boolean(user && connected && !busy);
+  $('read-test-btn').disabled = !Boolean(connected && !busy);
   $('write-test-btn').disabled = !enabled;
   $('import-btn').textContent = `이전 할 일 ${legacy.length}개 가져오기`;
   for (const el of list.querySelectorAll('.check, .task-actions button')) el.disabled = !enabled;
@@ -171,14 +154,14 @@ function render() {
   }
   updateControls();
 }
-function dataPath(id = '') { return `todos/${user.uid}${id ? '/' + id : ''}`; }
+function dataPath(id = '') { return `sharedTodos${id ? '/' + id : ''}`; }
 function diagnosticResult(message, failed = false) {
   const target = $('diagnostic-result');
   target.textContent = message;
   target.classList.toggle('error', failed);
 }
 function diagnosticsContext() {
-  return `프로젝트: ${firebaseConfig.projectId}\nDB: ${firebaseConfig.databaseURL}\n경로: ${user ? dataPath() : '(로그인 전)'}\n연결: ${connected}\n데이터 수신: ${loaded}`;
+  return `프로젝트: ${firebaseConfig.projectId}\nDB: ${firebaseConfig.databaseURL}\n경로: ${dataPath()}\n연결: ${connected}\n데이터 수신: ${loaded}`;
 }
 function detailedError(error) {
   const code = String(error?.code || '코드 미확인');
@@ -211,7 +194,7 @@ function openDialog(task = null) {
 }
 function closeDialog() { dialog.close(); }
 async function performWrite(operation, success) {
-  if (!user || !loaded || !connected || busy) { notify('Firebase 연결을 확인한 뒤 다시 시도해 주세요.'); return false; }
+  if (!loaded || !connected || busy) { notify('Firebase 연결을 확인한 뒤 다시 시도해 주세요.'); return false; }
   busy = true;
   updateControls();
   try {
@@ -229,53 +212,34 @@ async function performWrite(operation, success) {
   }
 }
 
-// 같은 계정의 각 브라우저는 동일한 /todos/<uid> 목록을 실시간으로 구독합니다.
-function startWatching(firebaseUser) {
-  const gen = ++authGeneration;
+// 모든 브라우저가 동일한 공개 할 일 목록을 실시간으로 구독합니다.
+function startWatching() {
+  const gen = ++watchGeneration;
   if (stopTasks) { stopTasks(); stopTasks = null; }
   if (stopConnection) { stopConnection(); stopConnection = null; }
   tasks = [];
   loaded = false;
   connected = false;
-  user = firebaseUser;
-  $('diagnostic-path').textContent = user ? dataPath() : '로그인 전';
-  diagnosticResult(user ? `계정 ${user.email || user.uid} 로그인됨. 데이터 경로: ${dataPath()}\n현재 연결·권한 확인 중` : '로그인한 다음 읽기/쓰기 테스트를 수행할 수 있어요.');
-  if (!user) {
-    signingUp = false;
-    $('auth-title').textContent = 'Firebase 계정 로그인';
-    $('auth-submit').textContent = '로그인';
-    $('auth-switch-text').textContent = '계정이 없나요?';
-    $('auth-toggle').textContent = '회원가입';
-    $('auth-password').autocomplete = 'current-password';
-    $('auth-password').value = '';
-    $('account').classList.remove('visible');
-    $('auth-overlay').hidden = false;
-    $('auth-error').textContent = '';
-    setStatus('로그인하면 Firebase에 저장된 할 일을 불러옵니다.');
-    render();
-    return;
-  }
-  $('auth-overlay').hidden = true;
-  $('account').classList.add('visible');
-  $('account-email').textContent = user.email || '사용자';
+  $('diagnostic-path').textContent = dataPath();
+  diagnosticResult(`공개 공유 목록: ${dataPath()}\n현재 연결·권한 확인 중`);
   setStatus('Firebase 데이터를 불러오는 중이에요…');
   tasksRef = ref(db, dataPath());
   stopConnection = onValue(ref(db, '.info/connected'), snap => {
-    if (gen !== authGeneration) return;
+    if (gen !== watchGeneration) return;
     connected = snap.val() === true;
     if (!connected) setStatus('Firebase 연결이 끊겼어요. 연결되면 다시 저장할 수 있어요.', 'warning');
     else if (loaded) setStatus('Firebase 실시간 동기화 연결됨', 'ready');
     updateControls();
-  }, err => { if (gen === authGeneration) setStatus(describeError(err), 'error'); });
+  }, err => { if (gen === watchGeneration) setStatus(describeError(err), 'error'); });
   stopTasks = onValue(tasksRef, snap => {
-    if (gen !== authGeneration) return;
+    if (gen !== watchGeneration) return;
     const records = snap.val();
     tasks = records && typeof records === 'object' ? Object.entries(records).map(([key,val]) => normalizeTask(key,val)).filter(Boolean) : [];
     loaded = true;
     setStatus(connected ? 'Firebase 실시간 동기화 연결됨' : 'Firebase 데이터를 불러왔어요. 연결 상태를 확인 중이에요.', connected ? 'ready' : 'warning');
     render();
   }, err => {
-    if (gen !== authGeneration) return;
+    if (gen !== watchGeneration) return;
     loaded = false;
     tasks = [];
     setStatus(detailedError(err), 'error');
@@ -354,36 +318,6 @@ list.addEventListener('click', async e => {
 document.querySelectorAll('[data-filter]').forEach(btn => btn.addEventListener('click', () => { filter = btn.dataset.filter; render(); }));
 $('search').addEventListener('input', e => { keyword = e.target.value.trim().toLocaleLowerCase(); render(); });
 
-$('auth-toggle').addEventListener('click', () => {
-  signingUp = !signingUp;
-  $('auth-title').textContent = signingUp ? 'Firebase 계정 만들기' : 'Firebase 계정 로그인';
-  $('auth-submit').textContent = signingUp ? '회원가입' : '로그인';
-  $('auth-switch-text').textContent = signingUp ? '이미 계정이 있나요?' : '계정이 없나요?';
-  $('auth-toggle').textContent = signingUp ? '로그인' : '회원가입';
-  $('auth-password').autocomplete = signingUp ? 'new-password' : 'current-password';
-  $('auth-error').textContent = '';
-});
-$('auth-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  const email = $('auth-email').value.trim();
-  const password = $('auth-password').value;
-  const submit = $('auth-submit');
-  submit.disabled = true;
-  $('auth-error').textContent = '';
-  try {
-    if (signingUp) await createUserWithEmailAndPassword(auth, email, password);
-    else await signInWithEmailAndPassword(auth, email, password);
-    $('auth-password').value = '';
-  } catch (error) {
-    console.error('Firebase 인증 실패:', error);
-    $('auth-error').textContent = detailedError(error);
-  } finally { submit.disabled = false; }
-});
-$('logout-btn').addEventListener('click', async () => {
-  if (busy) { notify('저장이 완료된 뒤 로그아웃해 주세요.'); return; }
-  try { await signOut(auth); } catch (err) { notify(describeError(err)); }
-});
-
 // 이전 버전의 localStorage는 읽기만 하며, 명시적 클릭 전에는 Firebase에 업로드하지 않습니다.
 // UUID 또는 임의 문자열에서 결정적 Firebase key를 생성하여 재시도 시 중복/덮어쓰기를 방지합니다.
 async function legacyKey(id) {
@@ -394,7 +328,7 @@ async function legacyKey(id) {
 $('import-btn').addEventListener('click', async () => {
   const legacy = readLegacy();
   if (!legacy.length) return;
-  if (!window.confirm(`이 브라우저에 저장된 이전 할 일 ${legacy.length}개를 현재 Firebase 계정으로 가져올까요?\n기존 브라우저 데이터는 삭제하지 않습니다. 이미 가져온 항목은 다시 덮어쓰지 않습니다.`)) return;
+  if (!window.confirm(`이 브라우저에 저장된 이전 할 일 ${legacy.length}개를 공개 공유 목록으로 가져올까요? 접속한 누구나 볼 수 있어요.\n기존 브라우저 데이터는 삭제하지 않습니다. 이미 가져온 항목은 다시 덮어쓰지 않습니다.`)) return;
   let imported = 0;
   let already = 0;
   const ok = await performWrite(async () => {
@@ -414,19 +348,12 @@ $('import-btn').addEventListener('click', async () => {
   if (!ok) notify(`가져오기 중 중단됐어요. 성공 ${imported}개, 기존 ${already}개. 재시도해도 중복 생성되지 않아요.`);
 });
 
-// Enable authentication only after its submit handler is installed.
-$('auth-form').removeAttribute('onsubmit');
-$('auth-submit').disabled = false;
-$('auth-toggle').disabled = false;
-onAuthStateChanged(auth, firebaseUser => startWatching(firebaseUser), error => {
-  setStatus(describeError(error), 'error');
-  $('auth-error').textContent = detailedError(error);
-});
+startWatching();
 render();
 
 // 진단은 버튼 클릭 시에만 작동합니다. 테스트 항목은 별도 고유 ID로 만들고 삭제합니다.
 $('read-test-btn').addEventListener('click', async () => {
-  if (!user || !connected || busy) return;
+  if (!connected || busy) return;
   $('read-test-btn').disabled = true;
   try {
     const snap = await get(ref(db, dataPath()));
@@ -437,7 +364,7 @@ $('read-test-btn').addEventListener('click', async () => {
   } finally { updateControls(); }
 });
 $('write-test-btn').addEventListener('click', async () => {
-  if (!user || !connected || !loaded || busy) return;
+  if (!connected || !loaded || busy) return;
   if (!window.confirm('Firebase에 임시 할 일 1개를 생성한 뒤 실제 재조회하고 삭제합니다. 진행할까요?')) return;
   busy = true;
   updateControls();
