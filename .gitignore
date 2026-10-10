@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+node_modules/
+.env*
+tests/live-results.json
+tests/live-screen.png

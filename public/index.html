@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8fc">
+  <title>하루 | Firebase 할 일 관리</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fc;
+      --surface: #ffffff;
+      --ink: #222540;
+      --muted: #8388a2;
+      --border: #eaebf3;
+      --primary: #6657ef;
+      --primary-dark: #5141d7;
+      --soft-primary: #f0eeff;
+      --shadow: 0 18px 48px rgba(42, 40, 90, .055);
+      font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Segoe UI", sans-serif;
+      font-synthesis: none;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--bg); color: var(--ink); }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #bab4ff; outline-offset: 2px; }
+    .app { max-width: 1040px; padding: 0 28px 64px; margin: auto; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; padding: 35px 0 31px; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-symbol { display: grid; place-items: center; width: 43px; height: 43px; border-radius: 14px; background: var(--primary); color: white; box-shadow: 0 7px 18px rgba(102,87,239,.22); }
+    .brand-name { font-size: 23px; font-weight: 850; letter-spacing: -1.1px; }
+    .brand-subtitle { margin-top: 2px; font-size: 12px; color: var(--muted); }
+    .today-label { font-size: 13px; color: #787d97; font-weight: 600; }
+    .hero { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 35px 42px; min-height: 218px; border-radius: 24px; color: #fff; background: radial-gradient(circle at 85% 0%, rgba(199,194,255,.30) 0, transparent 38%), linear-gradient(115deg, #6658ee 0%, #7769f3 52%, #938af5 100%); position: relative; overflow: hidden; }
+    .hero::after { content: ""; position: absolute; width: 280px; height: 280px; border: 1px solid rgba(255,255,255,.20); border-radius: 50%; right: -64px; top: -110px; pointer-events: none; box-shadow: 0 0 0 38px rgba(255,255,255,.035),0 0 0 89px rgba(255,255,255,.024); }
+    .hero-copy { position: relative; z-index: 1; }
+    .eyebrow { font-size: 12px; letter-spacing: .12em; font-weight: 750; color: #e7e2ff; }
+    .hero h1 { margin: 14px 0 8px; font-size: clamp(26px, 4vw, 34px); letter-spacing: -1.6px; font-weight: 800; }
+    .hero p { margin: 0; color: #eeecff; font-size: 14px; line-height: 1.7; }
+    .hero-progress { width: 200px; flex: 0 0 200px; position: relative; z-index: 1; }
+    .progress-line { display: flex; justify-content: space-between; gap: 8px; align-items: flex-end; margin-bottom: 13px; }
+    .progress-line strong { font-size: 36px; font-weight: 850; letter-spacing: -1.4px; }
+    .progress-line span { font-size: 12px; color: #e9e6ff; margin-bottom: 6px; }
+    .progress-track { width: 100%; height: 9px; background: rgba(255,255,255,.28); border-radius: 99px; overflow: hidden; }
+    .progress-fill { width: 0; height: 100%; border-radius: inherit; background: #fff; transition: width .35s ease; }
+    .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 22px 0 30px; }
+    .stat { background: white; border: 1px solid #f1f1f7; border-radius: 19px; padding: 20px 23px; display: flex; align-items: center; gap: 17px; box-shadow: var(--shadow); }
+    .stat-icon { flex: 0 0 48px; width: 48px; height: 48px; border-radius: 16px; display: grid; place-items: center; }
+    .stat-icon.total { background: #f0eeff; color: #6959ef; }
+    .stat-icon.open { background: #fff3e9; color: #ef9859; }
+    .stat-icon.done { background: #e9f9f1; color: #26b57b; }
+    .stat-name { display: block; font-size: 12px; color: #8a8da3; margin-bottom: 6px; }
+    .stat-number { display: block; font-size: 25px; font-weight: 800; line-height: 1; }
+    .section { background: white; border: 1px solid #eeeff6; border-radius: 23px; padding: 27px 29px 30px; box-shadow: var(--shadow); min-height: 360px; }
+    .section-top { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+    .section-heading { display: flex; gap: 10px; align-items: baseline; }
+    .section-heading h2 { margin: 0; font-size: 21px; letter-spacing: -.7px; }
+    .section-heading span { font-weight: 750; color: #8c81f6; font-size: 14px; }
+    .add-btn { display: inline-flex; align-items: center; gap: 8px; color: white; background: var(--primary); border: 0; border-radius: 12px; padding: 12px 18px; font-size: 13px; font-weight: 720; box-shadow: 0 7px 16px rgba(102,87,239,.19); transition: transform .18s, background .18s; white-space: nowrap; }
+    .add-btn:hover { background: var(--primary-dark); transform: translateY(-1px); }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 27px 0 17px; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+    .filters { display: flex; align-items: center; gap: 6px; }
+    .filter { border: none; border-radius: 10px; padding: 9px 14px; background: transparent; color: #868ba4; font-size: 13px; font-weight: 700; }
+    .filter[aria-pressed="true"] { background: var(--soft-primary); color: var(--primary); }
+    .search-wrap { display: flex; align-items: center; gap: 9px; border: 1px solid #e9eaf3; border-radius: 11px; padding: 9px 12px; color: #989db2; width: min(100%, 250px); }
+    .search-wrap:focus-within { border-color: #9c92f6; }
+    .search-wrap input { width: 100%; min-width: 0; border: 0; outline: 0; font-size: 13px; color: var(--ink); background: transparent; }
+    .search-wrap input::placeholder { color: #a9adbf; }
+    .task-list { display: flex; flex-direction: column; gap: 10px; }
+    .task { display: flex; gap: 14px; align-items: center; border: 1px solid #eceef5; border-radius: 15px; padding: 17px 17px; min-height: 76px; transition: background .18s, border-color .18s; }
+    .task:hover { border-color: #dcd9fd; background: #fdfcff; }
+    .task.completed { background: #fcfcfe; }
+    .check { appearance: none; flex: 0 0 23px; width: 23px; height: 23px; border: 2px solid #d5d8e7; border-radius: 8px; background: #fff; display: grid; place-items: center; transition: .15s; margin: 0; cursor: pointer; }
+    .check:checked { background: var(--primary); border-color: var(--primary); }
+    .check:checked::after { content: ""; width: 10px; height: 6px; margin-top: -3px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-45deg); }
+    .task-main { min-width: 0; flex: 1; }
+    .task-title { font-size: 14px; font-weight: 760; line-height: 1.5; overflow-wrap: anywhere; }
+    .task.completed .task-title { text-decoration: line-through; color: #adb0c2; }
+    .task-desc { margin-top: 4px; color: #8f93a9; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .task-meta { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-top: 8px; }
+    .pill { padding: 4px 8px; border-radius: 7px; font-size: 11px; font-weight: 740; }
+    .pill.high { color: #e36b72; background: #fff0f1; }
+    .pill.medium { color: #d19336; background: #fff7e7; }
+    .pill.low { color: #43a584; background: #eaf9f2; }
+    .due { display: inline-flex; align-items: center; gap: 4px; color: #9499ae; font-size: 11px; }
+    .due.overdue { color: #df5b67; }
+    .task-actions { display: flex; align-items: center; gap: 4px; }
+    .icon-btn { display: grid; place-items: center; width: 34px; height: 34px; border: none; border-radius: 10px; background: transparent; color: #9a9db3; }
+    .icon-btn:hover { background: #f0eeff; color: var(--primary); }
+    .icon-btn.delete:hover { background: #fff0f1; color: #de636e; }
+    .empty { display: flex; min-height: 230px; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+    .empty-icon { width: 76px; height: 76px; display: grid; place-items: center; border-radius: 23px; background: #f3f1ff; color: var(--primary); margin-bottom: 18px; }
+    .empty h3 { font-size: 16px; margin: 0 0 7px; }
+    .empty p { color: #979bb0; font-size: 13px; margin: 0; line-height: 1.7; }
+    .footer { color: #afb2c4; text-align: center; font-size: 12px; padding-top: 23px; }
+    .dialog { border: 0; border-radius: 20px; padding: 0; width: min(92vw, 480px); max-height: min(90dvh, 760px); overflow: auto; background: white; box-shadow: 0 25px 80px rgba(19,16,58,.22); color: var(--ink); }
+    .dialog::backdrop { background: rgba(22,23,52,.45); backdrop-filter: blur(3px); }
+    .dialog-inner { padding: 29px; }
+    .dialog-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+    .dialog-top h2 { margin: 0; font-size: 22px; letter-spacing: -.7px; }
+    .field { display: block; margin-bottom: 19px; }
+    .field-label { display: block; margin-bottom: 9px; font-size: 13px; font-weight: 740; }
+    .field-label em { color: var(--primary); font-style: normal; }
+    .control { display: block; width: 100%; min-height: 44px; padding: 11px 13px; border: 1px solid #e3e5ee; border-radius: 11px; background: #fff; color: var(--ink); font-size: 14px; outline: 0; }
+    .control:focus { border-color: #8c7ef8; box-shadow: 0 0 0 3px #eeeaff; }
+    textarea.control { min-height: 96px; resize: vertical; }
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 9px; }
+    .secondary-btn { border: 1px solid #e8e8ef; padding: 11px 17px; border-radius: 11px; background: white; font-size: 13px; color: #6d728b; font-weight: 730; }
+    .toast { position: fixed; bottom: 28px; left: 50%; transform: translate(-50%, 20px); padding: 12px 18px; border-radius: 12px; background: #292940; box-shadow: 0 10px 30px rgba(0,0,0,.15); color: white; font-size: 13px; opacity: 0; pointer-events: none; transition: transform .2s, opacity .2s; z-index: 10; max-width: calc(100vw - 36px); text-align: center; }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .account { display: none; align-items: center; gap: 10px; font-size: 12px; color: #747993; }
+    .account.visible { display: flex; }
+    .account-email { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .small-btn { font-size: 12px; padding: 8px 11px; border-radius: 9px; background: #f0eeff; color: var(--primary); border: 0; font-weight: 700; }
+    .section-buttons { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+    .status { display: flex; align-items: center; gap: 9px; padding: 12px 16px; margin: 18px 0 0; border: 1px solid #dedaff; border-radius: 13px; background: #f0eeff; color: #6257bd; font-size: 12px; font-weight: 650; }
+    .status::before { content: ''; width: 8px; height: 8px; flex: 0 0 8px; background: currentColor; border-radius: 50%; }
+    .status.ready { background: #e9f9f1; color: #25825d; border-color: #c4ebd9; }
+    .status.warning { background: #fff7e8; color: #a56e27; border-color: #f4e1c0; }
+    .status.error { background: #fff0f1; color: #b74b59; border-color: #f1c5cd; }
+    .diagnostics { margin: 10px 0 0; border: 1px solid #e6e7f2; border-radius: 13px; background: #fff; padding: 12px 16px; color: #696f8c; font-size: 12px; line-height: 1.7; }
+    .diagnostics summary { cursor: pointer; font-weight: 750; color: #555f83; }
+    .diagnostics code { overflow-wrap: anywhere; font-size: 11px; }
+    .diagnostic-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .diagnostic-result { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 9px; }
+    .diagnostic-result.error { color: #b74b59; }
+    .version-label { color: #c2c0dc; font-size: 11px; margin-top: 5px; }
+    .add-btn:disabled, .small-btn:disabled, .check:disabled, .icon-btn:disabled { opacity: .47; cursor: not-allowed; transform: none; }
+    [hidden] { display: none !important; }
+    .auth-overlay { position: fixed; z-index: 20; inset: 0; background: rgba(25, 27, 53, .49); display: grid; place-items: center; padding: 20px; }
+    .auth-card { width: min(100%, 410px); background: #fff; padding: 32px; border-radius: 22px; box-shadow: 0 24px 65px rgba(25,25,55,.25); }
+    .auth-card h2 { font-size: 23px; letter-spacing: -.7px; margin: 0 0 9px; }
+    .auth-card p { font-size: 13px; line-height: 1.7; color: #777b97; margin: 0 0 23px; }
+    .auth-error { min-height: 20px; margin: 12px 0 0; color: #c84f5d; font-size: 12px; }
+    .auth-foot { display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 18px; font-size: 12px; color: #787d93; }
+    .link-btn { border: none; background: none; color: var(--primary); font-size: 12px; font-weight: 750; padding: 4px; }
+    .secondary-btn:hover { background: #f8f7fd; }
+
+    @media (max-width: 680px) {
+      .account-email { max-width: 90px; }
+      .auth-card { padding: 26px 20px; }
+
+      .app { padding: 0 16px 38px; }
+      .topbar { padding: 23px 0; }
+      .today-label { font-size: 11px; text-align: right; }
+      .hero { padding: 29px 25px; display: block; border-radius: 19px; }
+      .hero-progress { width: 100%; margin-top: 24px; }
+      .progress-line strong { font-size: 29px; }
+      .stats { gap: 9px; margin: 15px 0 21px; }
+      .stat { flex-direction: column; align-items: flex-start; gap: 9px; padding: 15px 12px; border-radius: 15px; }
+      .stat-icon { width: 37px; height: 37px; flex-basis: 37px; border-radius: 11px; }
+      .stat-icon svg { width: 19px; height: 19px; }
+      .stat-number { font-size: 22px; }
+      .section { padding: 21px 15px; border-radius: 19px; }
+      .section-heading h2 { font-size: 19px; }
+      .add-btn { padding: 11px 13px; }
+      .toolbar { flex-wrap: wrap; margin-top: 24px; }
+      .search-wrap { width: 100%; }
+      .task { gap: 11px; padding: 14px 10px; }
+      .task-actions { flex-direction: column; }
+      .icon-btn { width: 29px; height: 28px; }
+      .field-row { grid-template-columns: 1fr; gap: 0; }
+      .dialog-inner { padding: 24px 20px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0.01ms !important; } }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-symbol" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>
+        </div>
+        <div><div class="brand-name">하루<span style="color:#6657ef">.</span></div><div class="brand-subtitle">나만의 작은 할 일 관리</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px"><time class="today-label" id="today-label"></time><div id="account" class="account"><span id="account-email" class="account-email"></span><button type="button" id="logout-btn" class="small-btn">로그아웃</button></div></div>
+    </header>
+
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <div class="eyebrow">MY DAILY PLANNER</div>
+        <h1 id="hero-title">작은 일부터, 하나씩.</h1>
+        <p>오늘의 계획을 기록하고 하나씩 완성해 보세요.<br>꾸준한 하루가 모여 큰 변화를 만들어요.</p><div class="version-label">Firebase 실시간 저장 · Vercel 준비 v2</div>
+      </div>
+      <div class="hero-progress">
+        <div class="progress-line"><strong id="percent">0%</strong><span>전체 달성률</span></div>
+        <div class="progress-track" role="progressbar" aria-label="완료율" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      </div>
+    </section>
+
+    <div id="status" class="status" role="status" aria-live="polite">Firebase에 연결하고 있어요…</div>
+    <details class="diagnostics" id="diagnostics">
+      <summary>Firebase 연결 상태·실제 저장 경로 확인</summary>
+      <div>프로젝트: <strong id="diagnostic-project">todo-backend-8ac43</strong></div>
+      <div>데이터베이스: <code id="diagnostic-url">https://todo-backend-8ac43-default-rtdb.firebaseio.com/</code></div>
+      <div>데이터 경로: <code id="diagnostic-path">로그인 전</code></div>
+      <div class="diagnostic-actions">
+        <button type="button" id="read-test-btn" class="small-btn" disabled>읽기 권한 확인</button>
+        <button type="button" id="write-test-btn" class="small-btn" disabled>임시 쓰기·읽기·삭제 테스트</button>
+        <button type="button" id="copy-diagnostic-btn" class="small-btn">진단 결과 복사</button>
+      </div>
+      <div id="diagnostic-result" class="diagnostic-result" role="status">로그인한 다음 읽기/쓰기 테스트를 수행할 수 있어요. 테스트는 버튼을 눌렀을 때만 시작돼요.</div>
+    </details>
+
+    <section class="stats" aria-label="할 일 통계">
+      <div class="stat"><div class="stat-icon total"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 10h8M8 14h5"/></svg></div><div><span class="stat-name">전체 할 일</span><strong class="stat-number" id="total-count">0</strong></div></div>
+      <div class="stat"><div class="stat-icon open"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div><span class="stat-name">진행 중</span><strong class="stat-number" id="active-count">0</strong></div></div>
+      <div class="stat"><div class="stat-icon done"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg></div><div><span class="stat-name">완료했어요</span><strong class="stat-number" id="done-count">0</strong></div></div>
+    </section>
+
+    <section class="section" aria-labelledby="list-heading">
+      <div class="section-top">
+        <div class="section-heading"><h2 id="list-heading">나의 할 일</h2><span id="list-count">0</span></div>
+        <div class="section-buttons"><button type="button" id="import-btn" class="small-btn" hidden>이전 할 일 가져오기</button><button class="add-btn" type="button" id="add-btn" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>할 일 추가</button></div>
+      </div>
+      <div class="toolbar">
+        <div class="filters" role="group" aria-label="할 일 상태 필터">
+          <button class="filter" type="button" data-filter="all" aria-pressed="true">전체</button>
+          <button class="filter" type="button" data-filter="active" aria-pressed="false">진행 중</button>
+          <button class="filter" type="button" data-filter="done" aria-pressed="false">완료</button>
+        </div>
+        <label class="search-wrap"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="search" type="search" placeholder="할 일 검색" aria-label="할 일 검색" maxlength="100"></label>
+      </div>
+      <div class="task-list" id="task-list" aria-live="polite"></div>
+    </section>
+    <footer class="footer">당신의 하루를 응원해요 ✦ · 할 일은 Firebase Realtime Database에 저장됩니다.</footer>
+  </main>
+
+  <dialog id="task-dialog" class="dialog" aria-labelledby="dialog-heading">
+    <form id="task-form" class="dialog-inner">
+      <div class="dialog-top"><h2 id="dialog-heading">새 할 일 추가</h2><button type="button" class="icon-btn" id="dialog-close" aria-label="닫기"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+      <label class="field"><span class="field-label">할 일 제목 <em>*</em></span><input class="control" id="task-title" type="text" required maxlength="120" placeholder="무엇을 해야 하나요?" autocomplete="off"></label>
+      <label class="field"><span class="field-label">메모 (선택)</span><textarea class="control" id="task-description" maxlength="1000" placeholder="자세한 내용을 적어주세요"></textarea></label>
+      <div class="field-row">
+        <label class="field"><span class="field-label">중요도</span><select class="control" id="task-priority"><option value="medium">보통</option><option value="high">높음</option><option value="low">낮음</option></select></label>
+        <label class="field"><span class="field-label">마감일 (선택)</span><input class="control" id="task-due" type="date"></label>
+      </div>
+      <div class="dialog-actions"><button type="button" class="secondary-btn" id="cancel-btn">취소</button><button class="add-btn" id="save-btn" type="submit">할 일 저장</button></div>
+    </form>
+  </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div id="auth-overlay" class="auth-overlay" role="region" aria-label="Firebase 계정 로그인">
+    <section class="auth-card">
+      <h2 id="auth-title">Firebase 계정 로그인</h2>
+      <p>할 일을 안전하게 저장하고 다른 기기에서도 이용하려면 같은 계정으로 로그인하세요.</p>
+      <form id="auth-form" onsubmit="return false">
+        <label class="field"><span class="field-label">이메일</span><input type="email" class="control" id="auth-email" required maxlength="254" autocomplete="email" placeholder="example@email.com"></label>
+        <label class="field"><span class="field-label">비밀번호</span><input type="password" class="control" id="auth-password" required minlength="6" autocomplete="current-password" placeholder="6자 이상"></label>
+        <button type="submit" class="add-btn" id="auth-submit" disabled style="justify-content:center;width:100%;margin-top:3px">로그인</button>
+        <div id="auth-error" class="auth-error" role="alert"></div>
+      </form>
+      <div class="auth-foot"><span id="auth-switch-text">계정이 없나요?</span><button type="button" class="link-btn" id="auth-toggle" disabled>회원가입</button></div>
+    </section>
+  </div>
+
+  <script type="module">
+    import('./app.js').catch(error => {
+      console.error('하루 앱 모듈 로드 실패', error);
+      const message = '앱 실행 실패: Firebase JavaScript SDK를 불러오지 못했습니다. 인터넷 연결·브라우저 개발자 도구의 Console/Network 탭을 확인해 주세요.';
+      const status = document.getElementById('status');
+      if (status) { status.textContent = message; status.className = 'status error'; }
+      const authError = document.getElementById('auth-error');
+      if (authError) authError.textContent = message;
+    });
+  </script>
+</body>
+</html>

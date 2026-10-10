@@ -1,0 +1,13 @@
+{
+  "rules": {
+    "todos": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "$todoId": {
+          ".validate": "newData.hasChildren(['title', 'description', 'priority', 'due', 'done', 'createdAt', 'updatedAt']) && newData.child('title').isString() && newData.child('title').val().length > 0 && newData.child('title').val().length <= 120 && newData.child('description').isString() && newData.child('description').val().length <= 1000 && newData.child('priority').isString() && (newData.child('priority').val() === 'high' || newData.child('priority').val() === 'medium' || newData.child('priority').val() === 'low') && newData.child('due').isString() && newData.child('done').isBoolean() && newData.child('createdAt').isNumber() && newData.child('updatedAt').isNumber()"
+        }
+      }
+    }
+  }
+}
